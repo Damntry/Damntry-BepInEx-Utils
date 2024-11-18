@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Reflection;
 
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces {
@@ -8,7 +10,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces {
 	/// </summary>
 	public interface ISelfPatch {
 
-		void PatchInstance();
+		List<MethodInfo> PatchInstance();
 
 		void UnpatchInstance();
 

@@ -4,9 +4,8 @@ using System.Linq;
 using System.Reflection;
 using Damntry.Utils.Logging;
 using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses;
-using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces;
 using Damntry.UtilsBepInEx.Logging;
-using HarmonyLib;
+using SuperQoLity.SuperMarket.ModUtils;
 
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
@@ -35,25 +34,35 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 		//			(I should probably be doing this anyway). 
 
 
-		public static bool StartAutoPatcher() {
-			return StartAutoPatcher(Assembly.GetCallingAssembly());
+		//	TODO Global 6 - Related to the above of duplicated dlls, my assembly logic is all over the place since I dont even know what Im going to do.
+		//		In some places I take the calling assembly, in others who knows... Then the AutoPatchContainer class is an static that could hold
+		//		all autopatches across mods, but then there would be no separation whatsoever and I wouldnt be able to do things like unpatching a
+		//		whole mod in an easy way.
+		//		Its a mess, but at least it wont matter until I create a 2º mod for the same game, or someone copies this system (the madman).
+
+		public static bool RegisterAllAutoPatchContainers() {
+			List<Type> autoPatchTypes = GetAutoPatchClasses(Assembly.GetCallingAssembly()).ToList();
+			if (autoPatchTypes.Count == 0) {
+				return false;
+			}
+
+			foreach (var autoPatchType in autoPatchTypes) {
+				AutoPatchContainer.RegisterPatchClass(autoPatchType);
+			}
+
+			return true;
 		}
 
-		public static bool StartAutoPatcher(Type assemblyType) {
-			return StartAutoPatcher(assemblyType.Assembly);
-		}
 
-		public static bool StartAutoPatcher(Assembly assembly) {
+		public static bool StartAutoPatcher(MethodSignatureChecker signChecker) {
 			int patchErrorCount = 0;
 			int patchDisabledCount = 0;
 
-			List<Type> autoPatchTypes = GetAutoPatchClasses(assembly).ToList();
-
 			AutoPatchResult result;
-
+			
 			//Patch all them patches
-			foreach (Type autoPatchType in autoPatchTypes) {
-				result = Patch(autoPatchType);
+			foreach (KeyValuePair<Type, AutoPatchedInstanceBase> autoPatchInfo in AutoPatchContainer.GetRegisteredAutoPatches()) {
+				result = Patch(autoPatchInfo.Key, autoPatchInfo.Value, signChecker);
 
 				if (result == AutoPatchResult.disabled) {
 					patchDisabledCount++;
@@ -67,22 +76,26 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 
 				return true;
 			} else {
-				BepInExTimeLogger.Logger.LogTimeFatal($"Oh oh, {patchErrorCount} out of {autoPatchTypes.Count - patchDisabledCount} patches failed. " +
+				BepInExTimeLogger.Logger.LogTimeFatal($"Oh oh, {patchErrorCount} out of {AutoPatchContainer.GetRegisteredAutoPatches().Count() - patchDisabledCount} patches failed. " +
 					$"Check above for errors.", TimeLoggerBase.LogCategories.Loading);
 
 				return false;
 			}
 		}
 
-		private static AutoPatchResult Patch(Type autoPatchType) {
-			IAutoPatchSupport autoPatchInstance = null;
+		private static AutoPatchResult Patch(Type autoPatchType, AutoPatchedInstanceBase autoPatchInstance, MethodSignatureChecker signChecker) {
 			AutoPatchResult result = AutoPatchResult.none;
 
-			try {			
-				autoPatchInstance = (IAutoPatchSupport)AccessTools.Property(autoPatchType.BaseType, nameof(AutoPatchedInstanceBase.Instance)).GetValue(null);
+			try {
+				if (autoPatchInstance == null) {
+					throw new InvalidOperationException($"Auto patch received a null instance from the registered type {autoPatchType.FullName}.");
+				}
 
 				if (autoPatchInstance.IsAutoPatchEnabled) {
-					autoPatchInstance.PatchInstance();
+					var listMethodsPatched = autoPatchInstance.PatchInstance();
+
+					AddMethodSignatures(signChecker, listMethodsPatched);
+
 					result = AutoPatchResult.success;
 				} else {
 					result = AutoPatchResult.disabled;
@@ -107,6 +120,12 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 			return result;
 		}
 
+		private static void AddMethodSignatures(MethodSignatureChecker signChecker, List<MethodInfo> listMethodsPatched) {
+			foreach (var method in listMethodsPatched) {
+				signChecker.AddMethodSignature(method);
+			}
+		}
+
 		public static bool IsPatchActiveFromResult(AutoPatchResult autoPatchResult) {
 			return autoPatchResult switch {
 				AutoPatchResult.success => true,
@@ -116,8 +135,24 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 		}
 
 		private static IEnumerable<Type> GetAutoPatchClasses(Assembly assembly) {
-			return assembly.GetTypes().Where
-				(type => type.IsClass && !type.IsAbstract && typeof(IAutoPatchSupport).IsAssignableFrom(type));
+			return assembly.GetTypes().Where(type => type.IsClass && !type.IsAbstract && type.IsSubclassOf(typeof(AutoPatchedInstanceBase)));
+
+			/*
+			List<AutoPatchedInstanceBase> autoPatchedInstanceBases = new List<Type>();
+			foreach (var item in assembly.GetTypes().Where(type => type.IsClass && !type.IsAbstract && type.IsSubclassOf(typeof(AutoPatchedInstanceBase)))) {
+				autoPatchedInstanceBases.Cast<AutoPatchedInstanceBase>().(item);
+			}
+
+			BepInExTimeLogger.Logger.LogTimeExceptionWithMessage("", ex, TimeLoggerBase.LogCategories.AutoPatch);
+			return autoPatchedInstanceBases;
+
+			return (IEnumerable<AutoPatchedInstanceBase>)assembly.GetTypes().Where
+				(type => type.IsClass && !type.IsAbstract && type.IsSubclassOf(typeof(AutoPatchedInstanceBase)));
+			*/
+		}
+
+		public static string[] GetHarmonyInstanceIdsForAttribute(Type[] autoPatchTypes) {
+			return autoPatchTypes.Select((Type autoPatchType) => AutoPatchContainer.GetAbstractInstance(autoPatchType).harmonyPatchInstance.Value.GetHarmonyInstanceId()).ToArray();
 		}
 
 	}

@@ -21,10 +21,8 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Attributes {
 
 		private HarmonyBeforeInstance() { }
 
-		public HarmonyBeforeInstance(params AutoPatchedInstanceBase[] beforeInstances) {
-			string[] beforeInstancesStr = beforeInstances.Select(inst => inst.harmonyPatchInstance.Value.GetHarmonyInstanceId()).ToArray();
-
-			info.before = beforeInstancesStr;
+		public HarmonyBeforeInstance(params Type[] beforeInstances) {
+			info.before = AutoPatcher.GetHarmonyInstanceIdsForAttribute(beforeInstances);
 		}
 
 	}
@@ -40,10 +38,8 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Attributes {
 
 		private HarmonyAfterInstance() { }
 
-		public HarmonyAfterInstance(params AutoPatchedInstanceBase[] afterInstances) {
-			string[] afterInstancesStr = afterInstances.Select(inst => inst.harmonyPatchInstance.Value.GetHarmonyInstanceId()).ToArray();
-
-			info.after = afterInstancesStr;
+		public HarmonyAfterInstance(params Type[] afterInstances) {
+			info.after = AutoPatcher.GetHarmonyInstanceIdsForAttribute(afterInstances);
 		}
 
 	}

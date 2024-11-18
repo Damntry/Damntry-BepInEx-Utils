@@ -12,7 +12,7 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager {
 		internal static object ConfigMngInstance { get; private set; }
 
 
-		[HarmonyPatchStringTypes("ConfigurationManager.ConfigurationManager", "Update")]
+		[HarmonyPatchStringTypes(ConfigManagerController.ConfigMngFullTypeName, "Update")]
 		[HarmonyPostfix]
 		internal static void GetConfigManagerInstancePatch(object __instance) {
 			if (__instance != null) {

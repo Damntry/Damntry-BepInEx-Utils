@@ -4,6 +4,8 @@ using Damntry.UtilsBepInEx.ConfigurationManager.SettingAttributes;
 using Damntry.UtilsBepInEx.ConfigurationManager;
 using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces;
 using static Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.AutoPatcher;
+using System.Collections.Generic;
+using System.Reflection;
 
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses {
@@ -27,35 +29,31 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses {
 	/// </typeparam>
 	public abstract class AutoPatchedInstanceBase : IAutoPatchSupport, IConfigPatchDependence {
 
-		/// <summary>
-		/// TODO 0 - Possible re-architecture of automatic patch class instancing.
-		/// First an explanation of how the current system came to be.
-		///
-		/// Since BepInEx patch methods must be static, but by design my inherited methods from the base classes 
-		/// are not, at the start I decided that patch classes would have their own public static property that holds
-		/// an instance of themselves.
-		/// To not have to implement a Singleton manually on each patch class, I have this semi Singleton pattern so
-		/// the derived class can access its instance, and through it, all its base class logic. 
-		/// 
-		/// The problem of doing this is that the derived class needs to pass its own Type to the base class 
-		/// through T, otherwise there is no way of knowing the Type to be instantated from a static method.
-		/// This above specifically caused the most amount of trouble on many steps of the auto patcher cycle, and 
-		/// though it has been manageable, in retrospect I should have done it in any of the usual ways, like having 
-		/// a patch container class where I register all these classes, and you access this container to get a 
-		/// preregistered instance.
-		/// But I kind of like this small monster and it might not be worth changing it now for this project. We ll see.
-		/// </summary>
+		// Short explanation of the old instance system, so I dont forget why I changed:
+		//
+		// Since BepInEx patch methods must be static, but by design my inherited methods from the base classes 
+		// are not, at the start I decided to go for a simple system of patch classes that have their own public 
+		// static property, that holds an instance of themselves.
+		// To not have to implement a Singleton manually on each patch class, I made a semi Singleton pattern in
+		// this class so the derived class can access its instance, and through it, all its base class logic.
+		// 
+		// But this needed that the derived class passes its own Type to the base class through T while inheriting,
+		// otherwise there is no way right now of using generics to return the exact type at compile time.
+		// And probably never: https://github.com/dotnet/csharplang/discussions/6452
+		// 
+		// The effect of having a hierarchy chain of abstract classes with a generic, which I needed
+		// to reference in generic bound and unbound ways around the architecture, caused the most amount
+		// of trouble on many steps of the auto patcher cycle, and though it was manageable, I got fed up and
+		// ended up switching to the current patch container class registry.
+		//
+		// I kind of liked that old monster. You will not be missed.
 
 
-		/// <summary>
-		/// This constructor must NEVER be used. Use Instance() instead.
-		/// Needed protected to allow inheritance.
-		/// 
-		/// </summary>
-		protected AutoPatchedInstanceBase() { }
+		internal readonly Lazy<HarmonyInstancePatcher> harmonyPatchInstance;
 
-		internal readonly Lazy<HarmonyInstancePatcher<T>> harmonyPatchInstance = new Lazy<HarmonyInstancePatcher<T>>(() => new HarmonyInstancePatcher<T>());
-
+		internal AutoPatchedInstanceBase() {
+			harmonyPatchInstance = new Lazy<HarmonyInstancePatcher>(() => new HarmonyInstancePatcher(GetType()));
+		}
 
 		public abstract bool IsAutoPatchEnabled { get; }
 
@@ -69,7 +67,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses {
 		public abstract event Action<bool> OnPatchFinished;
 
 
-		public abstract void PatchInstance();
+		public abstract List<MethodInfo> PatchInstance();
 		public abstract void UnpatchInstance();
 
 		public abstract void RaiseEventOnAutoPatchFinish(AutoPatchResult autoPatchResult);
@@ -83,10 +81,11 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses {
 		/// <param name="configManagerControl"></param>
 		/// <param name="configEntry">The ConfigEntry<typeparamref name="T"/> settings that depends on the patchInstance.</param>
 		public void SetSettingPatchDependence<U>(ConfigManagerController configManagerControl, ConfigEntry<U> configEntry) {
-			Instance.OnPatchFinished += (IsPatchActive) => {
+			OnPatchFinished += (IsPatchActive) => {
 				configManagerControl.SetConfigAttribute(configEntry, ConfigurationManagerAttributes.ConfigAttributes.Browsable, IsPatchActive);
 			};
 		}
 
 	}
+
 }

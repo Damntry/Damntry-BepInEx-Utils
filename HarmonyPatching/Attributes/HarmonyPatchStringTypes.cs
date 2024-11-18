@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using Damntry.Utils.Reflection;
 using Damntry.UtilsBepInEx.Logging;
 using HarmonyLib;
@@ -46,7 +45,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.Attributes {
 		/// </param>
 		/// <param name="methodName">Name of the method</param>
 		/// <param name="argumentTypes">Argument types.</param>
-		public HarmonyPatchStringTypes(string fullTypeName, string methodName, params Type[] argumentTypes) {
+		public HarmonyPatchStringTypes(string fullTypeName, string methodName, Type[] argumentTypes) {
 			SetMethodInfo(fullTypeName, methodName, argumentTypes);
 		}
 
@@ -64,33 +63,14 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.Attributes {
 		/// </param>
 		/// <param name="methodName">Name of the method</param>
 		/// <param name="argumentFullTypeNames">Arguments full type names. See <paramref name="fullTypeName"/> param for details on the format.</param>
-		public HarmonyPatchStringTypes(string fullTypeName, string methodName, params string[] argumentFullTypeNames) {
-			SetMethodInfo(fullTypeName, methodName, argumentFullTypeNames);
+		public void SetMethodInfo(string fullTypeName, string methodName, string[] argumentFullTypeNames) {
+			Type[] argumentTypes = AssemblyUtils.GetTypesFromLoadedAssemblies(true, argumentFullTypeNames);
+
+			SetMethodInfo(fullTypeName, methodName, argumentTypes);
 		}
 
-
-		private void SetMethodInfo(string fullTypeName, string methodName, params string[] argumentFullTypeNames) {
-			List<Type> argumentTypes = null;
-
-			if (argumentFullTypeNames != null) {
-				argumentTypes = new List<Type>();
-
-				foreach (var item in argumentFullTypeNames) {
-					Type argType = AssemblyUtils.GetTypeFromAssembly(fullTypeName);
-					if (argType == null) {
-						throw new ArgumentException($"The argument type with value \"{fullTypeName}\" couldnt be found in the assembly.");
-					}
-
-					argumentTypes.Add(argType);
-				}
-			}
-
-
-			SetMethodInfo(fullTypeName, methodName, argumentTypes.ToArray());
-		}
-
-		private void SetMethodInfo(string fullTypeName, string methodName, params Type[] argumentTypes) {
-			Type declaringType = AssemblyUtils.GetTypeFromAssembly(fullTypeName, true);
+		private void SetMethodInfo(string fullTypeName, string methodName, Type[] argumentTypes) {
+			Type declaringType = AssemblyUtils.GetTypeFromLoadedAssemblies(fullTypeName, true);
 			if (declaringType == null) {
 				throw new ArgumentException($"The type with value \"{fullTypeName}\" couldnt be found in the assembly.");
 			}

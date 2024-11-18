@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Reflection;
 using static Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.AutoPatcher;
 
 
@@ -8,6 +10,8 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses.Inherita
 	// Because I think remembering that some cases DO work? I ended up mapping how patching and attributes work from
 	// Harmony source code to figure it all out, but my brain deleted pretty much all of it.
 	// I think it was when a class had multiple subclasses? Something like that maybe. I need to check again.
+	// Brain started working for a nanosecond and I think Harmony has zero nested patching, and I was remembering
+	// wrong, maybe thinking of a transpiler anonymous method?
 
 
 	/// <summary>
@@ -41,8 +45,8 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses.Inherita
 		public override event Action<bool> OnPatchFinished;
 
 
-		public override void PatchInstance() {
-			harmonyPatchInstance.Value.PatchInstance();
+		public override List<MethodInfo> PatchInstance() {
+			return harmonyPatchInstance.Value.PatchInstance();
 		}
 
 		public override void UnpatchInstance() {

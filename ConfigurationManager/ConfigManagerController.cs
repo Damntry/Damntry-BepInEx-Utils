@@ -1,6 +1,5 @@
 ﻿using System;
 using BepInEx.Configuration;
-using BepInEx;
 using HarmonyLib;
 using System.Reflection;
 using Damntry.Utils.Reflection;
@@ -13,6 +12,7 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager
 
     public class ConfigManagerController {
 
+		internal const string ConfigMngFullTypeName = "ConfigurationManager.ConfigurationManager";
 
 		private ConfigFile configFile;
 
@@ -42,8 +42,13 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager
 			currentSectionOrder = 0;
 			currentConfigOrder = int.MaxValue;
 
-			//Enable patch to get an instance of the ConfigurationManager object in the assembly.
-			ConfigurationManagerPatch.Harmony.Value.PatchAll(typeof(ConfigurationManagerPatch));
+			//Check that the ConfigurationManager plugin has been installed.
+			bool configManagerLoaded = AssemblyUtils.GetTypeFromLoadedAssemblies(ConfigMngFullTypeName) != null;
+
+			if (configManagerLoaded) {
+				//Enable patch to get an instance of the ConfigurationManager object in the assembly.
+				ConfigurationManagerPatch.Harmony.Value.PatchAll(typeof(ConfigurationManagerPatch));
+			}
 		}
 
 		private void SetSection(string sectionName, bool skipSectionOrder = false) {
