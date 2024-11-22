@@ -14,6 +14,7 @@ using Mono.Collections.Generic;
 using Mono.Cecil.Cil;
 using Newtonsoft.Json;
 using static Damntry.UtilsBepInEx.HarmonyPatching.CheckResult;
+using Damntry.UtilsBepInEx.HarmonyPatching.Exceptions;
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching {
 
@@ -228,8 +229,27 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		private IEnumerable<MethodInfo> GetAllPatchMethodTargets(Type assemblyType) {
 			return Assembly.GetAssembly(assemblyType).GetTypes()
 				.SelectMany(type => type.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
-					.Where(mInfo => mInfo.GetCustomAttributes().Any(attr => attr is HarmonyAttribute))
+					.Where(mInfo => IsHarmonyAttribute(mInfo))
 					.Select(mInfo => GetTargetMethodFromHarmonyPatchMethod(type, mInfo)));
+		}
+
+		private bool IsHarmonyAttribute(MethodInfo methodInfo) {
+			//Hacky way to handle the case of methods patched with HarmonyPatchStringTypes,
+			//	used when a type is not loaded at compile time so it is referenced using strings.
+			//	Methods using this attribute throw an error while patching, by design, when the
+			//	type doesnt exist, and must manually handle not patching by, for example, disabling
+			//	its autopatching, or having a Prepare return false among other ways.
+			//	Since we cant cover every custom case, we simply try to access the custom
+			//	attributes of the method, and if the result is a TypeNotFoundInAssemblyException,
+			//	we skip the method.
+			IEnumerable<Attribute> attribs = null;
+			try {
+				attribs = methodInfo.GetCustomAttributes();
+			} catch (TypeNotFoundInAssemblyException) {
+				return false;
+			}
+
+			return attribs.Any(attr => attr is HarmonyAttribute);
 		}
 
 		/// <summary>

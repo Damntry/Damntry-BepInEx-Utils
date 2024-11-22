@@ -1,5 +1,6 @@
 ﻿using System;
 using Damntry.Utils.Reflection;
+using Damntry.UtilsBepInEx.HarmonyPatching.Exceptions;
 using Damntry.UtilsBepInEx.Logging;
 using HarmonyLib;
 
@@ -63,7 +64,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.Attributes {
 		/// </param>
 		/// <param name="methodName">Name of the method</param>
 		/// <param name="argumentFullTypeNames">Arguments full type names. See <paramref name="fullTypeName"/> param for details on the format.</param>
-		public void SetMethodInfo(string fullTypeName, string methodName, string[] argumentFullTypeNames) {
+		private void SetMethodInfo(string fullTypeName, string methodName, string[] argumentFullTypeNames) {
 			Type[] argumentTypes = AssemblyUtils.GetTypesFromLoadedAssemblies(true, argumentFullTypeNames);
 
 			SetMethodInfo(fullTypeName, methodName, argumentTypes);
@@ -72,7 +73,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.Attributes {
 		private void SetMethodInfo(string fullTypeName, string methodName, Type[] argumentTypes) {
 			Type declaringType = AssemblyUtils.GetTypeFromLoadedAssemblies(fullTypeName, true);
 			if (declaringType == null) {
-				throw new ArgumentException($"The type with value \"{fullTypeName}\" couldnt be found in the assembly.");
+				throw new TypeNotFoundInAssemblyException($"The type with value \"{fullTypeName}\" couldnt be found in the assembly.");
 			}
 
 			info.declaringType = declaringType;
