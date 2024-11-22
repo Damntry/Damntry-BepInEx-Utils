@@ -1,13 +1,11 @@
 ﻿using System;
-using System.Linq;
-using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses;
-using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces;
 using HarmonyLib;
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Attributes {
 
 	//TODO 1 - Wait a second. If the autopatcher is just going in whatever order it finds the patches,
-	//		what happens with HarmonyBefore attributes? I imagine Harmony puts them in a queue or something?
+	//		what happens with HarmonyBefore attributes? I imagine Harmony puts them in a queue, or
+	//		does it only work when you do a PatchAll of everything?
 	//		Check it out and update the class comment below if necessary.
 
 	/// <summary>

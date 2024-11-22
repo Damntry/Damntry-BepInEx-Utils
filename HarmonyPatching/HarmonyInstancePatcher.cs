@@ -116,7 +116,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		/// <param name="originalMethodName">The name of the method in the original class that is going to be unpatched. </param>
 		public void UnpatchMethod(Type originalClassType, string originalMethodName) {
 			if (originalMethodName == null) {
-				throw new ArgumentNullException($"{nameof(originalMethodName)} cannot be null.");
+				throw new ArgumentNullException(nameof(originalMethodName));
 			}
 
 			MethodInfo method = AccessTools.Method(originalClassType, originalMethodName);
@@ -129,7 +129,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 
 		private void ThrowIfNotOwnInstanceNestedClass(Type classType) {
 			if (classType == null) {
-				throw new ArgumentNullException("ClassType argument cant be null.");
+				throw new ArgumentNullException(nameof(classType));
 			}
 			if (classType == harmonyInstanceType) {
 				throw new InvalidOperationException($"Use the method PatchInstance/UnpatchInstance() instead.");

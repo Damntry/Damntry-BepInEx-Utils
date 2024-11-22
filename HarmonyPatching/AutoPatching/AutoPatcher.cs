@@ -5,7 +5,6 @@ using System.Reflection;
 using Damntry.Utils.Logging;
 using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses;
 using Damntry.UtilsBepInEx.Logging;
-using SuperQoLity.SuperMarket.ModUtils;
 
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
@@ -54,7 +53,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 		}
 
 
-		public static bool StartAutoPatcher(MethodSignatureChecker signChecker) {
+		public static bool StartAutoPatcher() {
 			int patchErrorCount = 0;
 			int patchDisabledCount = 0;
 
@@ -62,7 +61,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 			
 			//Patch all them patches
 			foreach (KeyValuePair<Type, AutoPatchedInstanceBase> autoPatchInfo in AutoPatchContainer.GetRegisteredAutoPatches()) {
-				result = Patch(autoPatchInfo.Key, autoPatchInfo.Value, signChecker);
+				result = Patch(autoPatchInfo.Key, autoPatchInfo.Value);
 
 				if (result == AutoPatchResult.disabled) {
 					patchDisabledCount++;
@@ -83,7 +82,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 			}
 		}
 
-		private static AutoPatchResult Patch(Type autoPatchType, AutoPatchedInstanceBase autoPatchInstance, MethodSignatureChecker signChecker) {
+		private static AutoPatchResult Patch(Type autoPatchType, AutoPatchedInstanceBase autoPatchInstance) {
 			AutoPatchResult result = AutoPatchResult.none;
 
 			try {
@@ -93,8 +92,6 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 
 				if (autoPatchInstance.IsAutoPatchEnabled) {
 					var listMethodsPatched = autoPatchInstance.PatchInstance();
-
-					AddMethodSignatures(signChecker, listMethodsPatched);
 
 					result = AutoPatchResult.success;
 				} else {
@@ -118,12 +115,6 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 			}
 
 			return result;
-		}
-
-		private static void AddMethodSignatures(MethodSignatureChecker signChecker, List<MethodInfo> listMethodsPatched) {
-			foreach (var method in listMethodsPatched) {
-				signChecker.AddMethodSignature(method);
-			}
 		}
 
 		public static bool IsPatchActiveFromResult(AutoPatchResult autoPatchResult) {

@@ -33,7 +33,7 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager
 
 		public ConfigManagerController(ConfigFile configFile) {
 			if (configFile == null) {
-				throw new ArgumentNullException("Argument configFile cannot be null");
+				throw new ArgumentNullException(nameof(configFile));
 			}
 			
 
@@ -42,7 +42,7 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager
 			currentSectionOrder = 0;
 			currentConfigOrder = int.MaxValue;
 
-			//Check that the ConfigurationManager plugin has been installed.
+			//Check that the ConfigurationManager plugin is installed.
 			bool configManagerLoaded = AssemblyUtils.GetTypeFromLoadedAssemblies(ConfigMngFullTypeName) != null;
 
 			if (configManagerLoaded) {
@@ -152,7 +152,9 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager
 				disabled: true, hideDefaultButton: true, acceptableVal: null, skipSectionIncrease: skipSectionIncrease);
 		}
 
-		/// <param name="patchInstanceDependency">Instance of a class that implements or derives from an IConfigPatchDependence interface.</param>
+		/// <param name="patchInstanceDependency">
+		/// Specifies a dependency for this setting. The setting will be hidden until the instance has been successfully patched and is active.
+		/// </param>
 		public ConfigEntry<T> AddConfig<T>(string sectionName, string key, T defaultValue, string description = null,
 				IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, bool disabled = false, bool hideDefaultButton = false, bool isAdvanced = false) {
 			return AddConfig(sectionName, key, defaultValue, description, patchInstanceDependency, hidden, disabled, null, false, hideDefaultButton, isAdvanced);

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses;
-using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces;
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 

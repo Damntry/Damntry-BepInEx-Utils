@@ -5,17 +5,17 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using Damntry.UtilsBepInEx.Logging;
-using System.Text.Json;
 using Damntry.Utils.Reflection;
+using Damntry.Utils.Logging;
 using HarmonyLib;
-using Mono.Cecil;
 using MonoMod.Utils;
-using Mono.CompilerServices.SymbolWriter;
-using Mono.Cecil.Rocks;
+using Mono.Cecil;
+using Mono.Collections.Generic;
+using Mono.Cecil.Cil;
+using Newtonsoft.Json;
+using static Damntry.UtilsBepInEx.HarmonyPatching.CheckResult;
 
-
-namespace SuperQoLity.SuperMarket.ModUtils {
-
+namespace Damntry.UtilsBepInEx.HarmonyPatching {
 
 	/// <summary>
 	/// Utility to check if methods have changed between explicit runs.
@@ -23,32 +23,43 @@ namespace SuperQoLity.SuperMarket.ModUtils {
 	/// </summary>
 	public class MethodSignatureChecker {
 
-		//TODO Global 3 - The steps to make this work semiautomatically with autopatching are awkward.
-		//	1. Create the instance of this class.
-		//	2. Manually start autopatching passing this instance as parameter.
-		//	3. Manually start signature checking
-		//	
-		//	Having to call the autopatcher like that for a signature checking to work is counterintuitive.
-		//	The thing is that its both the combination of autopatching and harmony that goes through all
-		//	patch methods, and replicating that functionality to do the signature checking without depending
-		//	on the autopatching doing the actual patching, would require quite a bit of work, and it would
-		//	be a bit wasteful.
+		//TODO Global 7 - When a different signature is found, instead of not overwriting the signature file, write a
+		//		new dated file with the errors, and every launch check if its there to show the error again to remind
+		//		me, with the date of failure.
+		//		This way we have the detail of having progressive changes detected, dates and what not that I could customize.
+
+		//TODO Global 6 - Implement a way to ignore specific methods. Either an attribute or through parameters or both.
+
+		/// <summary>
+		/// Contains the result and possible error messages of the last check performed.
+		/// </summary>
+		public CheckResult LastCheckResult { get; private set; }
+
+		private Dictionary<string, MethodSignature> currentMethodSignatures;
+
+		private Dictionary<string, MethodSignature> previousMethodSignatures;
+
+		private readonly string pathFileMethodSignatures;
+
+		private readonly Type pluginType;
 
 
 
 		/// <summary>
-		/// Initializes the MethodSignatureChecker and prepares the
-		/// path in the mod subfolder to write the method signatures.
+		/// Initializes this class and prepares the
+		/// path in the mod subfolder to write method signatures.
 		/// </summary>
 		/// <param name="pluginType">
 		/// A Type that exists in the mod assembly, used to find the .dll path to save/load the signatures.
 		/// Usually the BaseUnityPlugin plugin entry point, but can be any type from the same assembly.
 		/// </param>
 		public MethodSignatureChecker(Type pluginType) {
+			this.pluginType = pluginType;
 			currentMethodSignatures = new Dictionary<string, MethodSignature>();
+			LastCheckResult = new CheckResult();
 
-			pathAssemblyFile = AssemblyUtils.GetAssemblyDllFolderPath(pluginType);
-			string pathFolderSignatures = pathAssemblyFile + Path.DirectorySeparatorChar + nameof(MethodSignatureChecker);
+			var pathPluginAssemblyFile = AssemblyUtils.GetAssemblyDllFolderPath(pluginType);
+			string pathFolderSignatures = pathPluginAssemblyFile + Path.DirectorySeparatorChar + nameof(MethodSignatureChecker);
 
 			if (!Directory.Exists(pathFolderSignatures)) {
 				Directory.CreateDirectory(pathFolderSignatures);
@@ -57,16 +68,30 @@ namespace SuperQoLity.SuperMarket.ModUtils {
 			pathFileMethodSignatures = pathFolderSignatures + Path.DirectorySeparatorChar + "methodsignatures.json";
 		}
 
+		/// <summary>
+		/// 
+		/// </summary>
+		public void PopulateMethodSignaturesFromHarmonyPatches() {
+			foreach (var targetMethodInfo in GetAllPatchMethodTargets(pluginType)) {
+				AddMethodSignature(targetMethodInfo);
+			}
+		}
 
-		private Dictionary<string, MethodSignature> currentMethodSignatures;
-
-		private Dictionary<string, MethodSignature> previousMethodSignatures;
-
-		private readonly string pathFileMethodSignatures;
-
-		private readonly string pathAssemblyFile;
-
-		private bool signatureAdded;
+		/// <summary>
+		/// Initialized this object, adds all harmony patched method signatures, and starts to check immediately.
+		/// For when you dont need to add method signatures manually.
+		/// </summary>
+		/// <param name="pluginType">
+		/// A Type that exists in the mod assembly, used to find the .dll path to save/load the signatures.
+		/// Usually the BaseUnityPlugin plugin entry point, but can be any type from the same assembly.
+		/// </param>
+		/// <returns></returns>
+		public static MethodSignatureChecker StartSignatureCheck(Type pluginType) {
+			var mSigCheck = new MethodSignatureChecker(pluginType);
+			mSigCheck.PopulateMethodSignaturesFromHarmonyPatches();
+			mSigCheck.StartSignatureCheck();
+			return mSigCheck;
+		}
 
 
 		/// <summary>
@@ -82,8 +107,6 @@ namespace SuperQoLity.SuperMarket.ModUtils {
 		/// </param>
 		/// <param name="generics">Optional list of types that define the generic version of the method.</param>
 		public void AddMethodSignature(string fullTypeName, string methodName, string[] fullTypeParameters = null, Type[] generics = null) {
-			signatureAdded = true;
-
 			Type declaringType = AssemblyUtils.GetTypeFromLoadedAssemblies(fullTypeName, true);
 
 			AddMethodSignature(declaringType, methodName, fullTypeParameters, generics);
@@ -102,13 +125,42 @@ namespace SuperQoLity.SuperMarket.ModUtils {
 		/// </param>
 		/// <param name="generics">Optional list of types that define the generic version of the method.</param>
 		public void AddMethodSignature(Type declaringType, string methodName, string[] fullTypeParameters = null, Type[] generics = null) {
-			signatureAdded = true;
-
 			Type[] argumentTypes = AssemblyUtils.GetTypesFromLoadedAssemblies(true, fullTypeParameters);
-			MethodInfo methodInfo = AccessTools.Method(declaringType, methodName, argumentTypes, generics);
+
+			AddMethodSignature(declaringType, methodName, argumentTypes, generics);
+		}
+
+		/// <summary>
+		/// Adds a new method signature to later check if a previous one exist of the same method to compare against.
+		/// </summary>
+		/// <param name="declaringType">
+		/// The declaring type where the method resides.
+		/// </param>
+		/// <param name="methodName">Name of the method.</param>
+		public void AddMethodSignature(Type declaringType, string methodName) {
+			AddMethodSignature(declaringType, methodName, parameters: null, null);
+		}
+
+		/// <summary>
+		/// Adds a new method signature to later check if a previous one exist of the same method to compare against.
+		/// </summary>
+		/// <param name="declaringType">
+		/// The declaring type where the method resides.
+		/// </param>
+		/// <param name="methodName">Name of the method.</param>
+		/// <param name="parameters">
+		/// Optional parameters to target a specific overload of the method.
+		/// </param>
+		/// <param name="generics">Optional list of types that define the generic version of the method.</param>
+		public void AddMethodSignature(Type declaringType, string methodName, Type[] parameters = null, Type[] generics = null) {
+			MethodInfo methodInfo = AccessTools.Method(declaringType, methodName, parameters, generics);
 
 			if (methodInfo == null) {
-				BepInExTimeLogger.Logger.LogTimeWarning($"The method {declaringType}:{methodName} could not be found to compare its signature.", Damntry.Utils.Logging.TimeLoggerBase.LogCategories.Loading);
+				//TODO 6 - methodInfo null could mean that the method no longer exists, and it needs to be warned properly.
+				//	Since we cant differentiate between a dev error and the method vanishing, we should not throw an 
+				//	error here (its fine in AddMethodSignature(MethodInfo methodInfo) since the caller is supposed to control
+				//	that), and instead have a way to have this possible error included when the check is started.
+				//	Make sure to note in the log that it could just be the devs fault from wrong param values.
 				return;
 			}
 
@@ -119,68 +171,105 @@ namespace SuperQoLity.SuperMarket.ModUtils {
 		/// Adds a new method signature to later check if a previous one exist of the same method to compare against.
 		/// </summary>
 		public void AddMethodSignature(MethodInfo methodInfo) {
-			signatureAdded = true;
+			if (methodInfo == null) {
+				throw new ArgumentNullException(nameof(methodInfo));
+			}
 
-			MethodSignature mSig = CreateMethodSignature(methodInfo);
+			MethodDefinition methodDef = GetMethodDefinition(methodInfo);
+
+			MethodSignature mSig = CreateMethodSignature(methodInfo, methodDef);
 
 			string fullyQualifiedName = GetFullyQualifiedName(methodInfo);
-			currentMethodSignatures.Add(fullyQualifiedName, mSig);
+
+			if (!currentMethodSignatures.ContainsKey(fullyQualifiedName)) {  //There can be multiple patches targeting the same method
+				currentMethodSignatures.Add(fullyQualifiedName, mSig);
+			}
 		}
 
 		private string GetFullyQualifiedName(MethodInfo methodInfo) {
 			return methodInfo.DeclaringType.FullName + "." + methodInfo.Name;
 		}
 
-		//TODO 1 - Remember to note that it doesnt take into account the AutoPatchIgnore attribute, by design, and they will be included.
-		private IEnumerable<MethodSignature> GetOriginalPatchMethodsSignature() {
-			//TODO 1 - The idea of this is to trasverse all patch methods in this assembly, and those are the ones that
-			//		will be automatically picked up for signature checking, instead of using autopatch.
-			//TODO 2 - When I finish this and it works, remember to remove from AutoPatcher all related functionality.
-			AssemblyDefinition.ReadAssembly(pathAssemblyFile);
+		/// <summary>
+		/// Gets a Mono.Cecil MethodDefinition from a MethodInfo.
+		/// </summary>
+		private MethodDefinition GetMethodDefinition(MethodInfo methodInfo) {
+			//TODO Global 6 - Check which method performs faster while still working most of the time, to make it first.
 
-			return AssemblyDefinition.ReadAssembly(pathAssemblyFile).MainModule
-				.GetTypes()
-				.SelectMany(typeDef => typeDef.Methods
-					.Where(methodDef => methodDef.HasBody && 
-						methodDef.CustomAttributes.Any(attr => attr.GetType().IsSubclassOf(typeof(HarmonyAttribute))))
-					.Select(methodDef => CreateMethodSignature(methodDef)));
+			string dllPath = AssemblyUtils.GetAssemblyDllFilePath(methodInfo.DeclaringType);
+			//TODO Global 5 - I should be caching this per dllPath
+			var assemblyDef = AssemblyDefinition.ReadAssembly(dllPath);
+
+			MethodDefinition methodDef = assemblyDef.MainModule
+				.GetType(methodInfo.DeclaringType.FullName)
+				.FindMethod(methodInfo.GetID());
+
+			if (methodDef == null) {
+				//Try second method.
+				methodDef = MethodBaseToMethodDefinition(methodInfo);
+			}
+
+			return methodDef;
 		}
 
-		private MethodSignature CreateMethodSignature(MethodDefinition methodDef) {
-			//TODO 1 - I need to get the original method that the method is patching, not the patch method
-			//	itself, so I need to delve into the HarmonyPatch attributes of the patch classes I find.
-			//	Basically now I have to repeat the same process as in GetPatchMethods but reading from the game
-			//	assembly, ot mine, and selecting the methods that the harmony info property was pointing to.
-			//		***There might be a way of creating a MethodDefinition from a constructor directly, which would
-			//	be better than going through the assembly.
+		public MethodDefinition MethodBaseToMethodDefinition(MethodBase method) {
+			var module = ModuleDefinition.ReadModule(new MemoryStream(File.ReadAllBytes(method.DeclaringType.Module.FullyQualifiedName)));
+			var declaring_type = (TypeDefinition)module.LookupToken(method.DeclaringType.MetadataToken);
 
-			/*
-			methodDef.Parameters.
-			methodDef.CustomAttributes.Single().;
-
-
-			AssemblyDefinition.ReadAssembly(pathGameAssemblyDll);
-
-			return AssemblyDefinition.ReadAssembly(pathAssemblyFile).MainModule
-				.GetTypes()
-				.SelectMany(typeDef => typeDef.Methods
-					.Where(methodDef => methodDef.HasBody &&
-						methodDef.CustomAttributes.Any(attr => attr.GetType().IsSubclassOf(typeof(HarmonyAttribute))))
-					.Select(methodDef => CreateMethodSignature(methodDef)));
-			*/
+			return (MethodDefinition)declaring_type.Module.LookupToken(method.MetadataToken);
 		}
 
-		/*
-		private MethodSignature CreateMethodSignature(MethodInfo methodInfo) {
-			MethodSignature mSig = new();
+		/// <summary>
+		/// Gets all static, <see cref="HarmonyAttribute"/> annotated methods from the assembly of the type passed by
+		/// parameter, and obtains the <see cref="MethodInfo"/> of the method that the annotations are targeting.
+		/// Ignores any attributes not inheriting from HarmonyPatch.
+		/// </summary>
+		/// <param name="assemblyType"></param>
+		private IEnumerable<MethodInfo> GetAllPatchMethodTargets(Type assemblyType) {
+			return Assembly.GetAssembly(assemblyType).GetTypes()
+				.SelectMany(type => type.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+					.Where(mInfo => mInfo.GetCustomAttributes().Any(attr => attr is HarmonyAttribute))
+					.Select(mInfo => GetTargetMethodFromHarmonyPatchMethod(type, mInfo)));
+		}
 
-			mSig.LocalSignatureMetadataToken = methodInfo.GetMethodBody().LocalSignatureMetadataToken;
+		/// <summary>
+		/// Gets the original method that the patch method is targeting for patching.
+		/// </summary>
+		/// <param name="methodClassType">The class where the method is located.</param>
+		/// <param name="methodInfo">The MethodInfo of the patch method.</param>
+		/// <returns>The MethodInfo of the method that the patch is targetting.</returns>
+		private MethodInfo GetTargetMethodFromHarmonyPatchMethod(Type methodClassType, MethodInfo methodInfo) {
+			//Get method info from the HarmonyAttributes of the method
+			var harmonyMethods = methodInfo.GetCustomAttributes(true)
+				.Where(attr => attr is HarmonyAttribute)
+				.Select(attr => ((HarmonyAttribute)attr).info);
+
+			//Merge all annotations into a single complete one.
+			HarmonyMethod harmonyMethod = HarmonyMethod.Merge(harmonyMethods.ToList());
+
+			if (harmonyMethod.method == null && harmonyMethod.declaringType == null) {
+				//Support that the containing class of the method can have the annotation
+				//	for the target type, instead of being in the method itself.
+				HarmonyMethod harmonyClassAttr = HarmonyMethod.Merge(HarmonyMethodExtensions.GetFromType(methodClassType));
+				harmonyMethod = harmonyClassAttr.Merge(harmonyMethod);
+			}
+
+			//Get MethodInfo from the info.
+			return harmonyMethod.method ??
+				AccessTools.Method(harmonyMethod.declaringType, harmonyMethod.methodName, harmonyMethod.argumentTypes);
+		}
+
+		private MethodSignature CreateMethodSignature(MethodInfo methodInfo, MethodDefinition methodDef) {
+			MethodSignature mSig = new MethodSignature();
+
 			//Join implicitly calls ToString() on each element.
-			mSig.LocalVariables = string.Join("", methodInfo.GetMethodBody().LocalVariables);
-			mSig.IL_MethodBody = methodInfo.GetMethodBody().GetILAsByteArray();
+			mSig.Arguments = string.Join("", (object[])methodInfo.GetParameters());
+			mSig.ReturnType = methodInfo.ReturnType.FullName;
+			mSig.Set_IL_BodyHashcode(methodDef.Body.Instructions);
+
 			return mSig;
 		}
-		*/
+
 
 		/// <summary>
 		/// Starts the process of comparing old with new method signatures.
@@ -190,90 +279,133 @@ namespace SuperQoLity.SuperMarket.ModUtils {
 		/// <returns>True if no differences were detected, Otherwise false.</returns>
 		/// <exception cref="InvalidOperationException">Error if Method signatures
 		/// have not been added before using AddMethodSignature(...)</exception>
-		public bool StartSignatureCheck() {
-			bool signatureOk = true;
+		public CheckResult StartSignatureCheck() {
+			CheckResult checkResult = new CheckResult(SignatureCheckResult.Started, "");
 
-			if (!signatureAdded) {
-				throw new InvalidOperationException("You need to try adding method signatures through \"AddMethodSignature(...)\" before starting the check.");
+			if (currentMethodSignatures?.Any() != true) {
+				return checkResult.SetValues(SignatureCheckResult.NoSignaturesAdded, "No method signature has been added. Signature comparison will be skipped.");
 			}
 
-			bool dataExists = LoadSignaturesFromDisk();
-			if (dataExists) {
-				signatureOk = CompareOldSignaturesAgainstNew();
+			if (TryLoadSignaturesFromFile(checkResult)) {
+				CompareOldSignaturesAgainstNew(checkResult);
 			}
 
-			SaveSignaturesToDisk();
+			if (checkResult.Result != SignatureCheckResult.SignaturesDifferent) {	//Dont save, so next launch we keep warning about different signatures.
+				SaveSignaturesToFile();
+			}
 
-			return signatureOk;
+			if (checkResult.Result == SignatureCheckResult.Started) {
+				throw new InvalidOperationException("Something went wrong. Method check finished with result \"Started\".");
+			}
+
+			return LastCheckResult = checkResult;
 		}
 
 
-		private bool LoadSignaturesFromDisk() {
+		private bool TryLoadSignaturesFromFile(CheckResult checkResult) {
 			if (!File.Exists(pathFileMethodSignatures)) {
+				checkResult.SetValues(SignatureCheckResult.NoPreviousSignatures, "No method signature file. Skipped check.");
 				return false;
 			}
-
+			
 			try {
 				string jsonString = File.ReadAllText(pathFileMethodSignatures, Encoding.Unicode);
-				previousMethodSignatures = JsonSerializer.Deserialize<Dictionary<string, MethodSignature>>(jsonString);
+				
+				previousMethodSignatures = JsonConvert.DeserializeObject<Dictionary<string, MethodSignature>>(jsonString);
 			} catch (Exception ex) {
-				BepInExTimeLogger.Logger.LogTimeExceptionWithMessage($"Error while reading and deserializing from " +
-					$"file \"{pathFileMethodSignatures}\". It might be corrupted. Skipping loading signatures.", ex, Damntry.Utils.Logging.TimeLoggerBase.LogCategories.Loading);
+				checkResult.SetValues(SignatureCheckResult.FileError,
+					BepInExTimeLogger.FormatException(ex, "Error while reading and deserializing from file " +
+					$"\"{pathFileMethodSignatures}\". It might be corrupted. Trying to delete file and skipping loading signatures."));
+
+				try {	//Try to delete but if it doesnt work it wont matter. This is a convenience for the dev, not the user.
+					File.Delete(pathFileMethodSignatures);
+				}catch { }
+
 				return false;
 			}
-
+			
 			return true;
 		}
 
-		private void SaveSignaturesToDisk() {
-			//File.WriteAllBytes(pathMethodSignatures, GetSignaturesByteArray());
-			string jsonString = JsonSerializer.Serialize(currentMethodSignatures);
+		private void SaveSignaturesToFile() {
+			string jsonString = JsonConvert.SerializeObject(currentMethodSignatures, Formatting.Indented);
 			File.WriteAllText(pathFileMethodSignatures, jsonString, Encoding.Unicode);
 		}
 
-		private bool CompareOldSignaturesAgainstNew() {
+		private void CompareOldSignaturesAgainstNew(CheckResult checkResult) {
 			if (previousMethodSignatures?.Any() != true || currentMethodSignatures?.Any() != true) {
-				return true;
+				return;
 			}
-
-			bool signaturesOk = true;
 
 			foreach (var methodSigPair in currentMethodSignatures) {
 				if (previousMethodSignatures.TryGetValue(methodSigPair.Key, out MethodSignature mSigOld)) {
 					MethodSignature mSigNew = methodSigPair.Value;
 
 					if (!mSigOld.Equals(mSigNew, out string errorDetail)) {
-						signaturesOk = false;
-
-						BepInExTimeLogger.Logger.LogTimeWarning($"The signature of the method {methodSigPair.Key} has changed " +
-							$"since last check. Detail: {errorDetail}. Make sure to check if any changes are needed locally.",
-							Damntry.Utils.Logging.TimeLoggerBase.LogCategories.Loading);
+						checkResult.Result = SignatureCheckResult.SignaturesDifferent;
+						checkResult.AddErrorMessage($"The signature of the method {methodSigPair.Key} has changed " +
+							$"since last check. Detail: {errorDetail}. Make sure to check if any changes are needed locally.");
 					}
 				}
 			}
 
-			return signaturesOk;
+			if (checkResult.Result != SignatureCheckResult.SignaturesDifferent) {
+				checkResult.SetValues(SignatureCheckResult.SignaturesOk, "Method signature check ok.");
+			}
 		}
 
-		private class MethodSignature {
 
-			internal int LocalSignatureMetadataToken { get; set; }
-			internal string LocalVariables { get; set; }
-			internal byte[] IL_MethodBody { get; set; }
+		internal class MethodSignature {
 
+			public string Arguments { get; set; }
+			public string ReturnType { get; set; }
+			public int IL_BodyHashcode { get; set; }
+
+			/* Test to see IL
+			public void Set_IL_BodyHashcode(Collection<Instruction> instructions) {
+				if (instructions == null) {
+					throw new ArgumentNullException(nameof(instructions));
+				}
+
+				StringBuilder sb = new StringBuilder();
+				foreach (var instruction in instructions) {
+					sb.AppendLine(instruction.ToString());
+				}
+
+				IL_BodyHashcode = sb.ToString();
+			}
+			*/
+			/// <summary>
+			/// Taken from https://stackoverflow.com/a/263416/739345 by Jon Skeet
+			/// </summary>
+			public void Set_IL_BodyHashcode(Collection<Instruction> instructions) {
+				if (instructions == null) {
+					throw new ArgumentNullException(nameof(instructions));
+				}
+
+				unchecked { // Overflow is fine, just wrap
+					int hash = 17;
+					foreach (var instruction in instructions) {
+						hash = hash * 71 + instruction.ToString().GetHashCode();
+					}
+
+					IL_BodyHashcode = hash;
+				}
+			}
+			
 			internal bool Equals(MethodSignature other, out string errorDetail) {
 				errorDetail = null;
 
-				if (LocalSignatureMetadataToken != other.LocalSignatureMetadataToken) {
-					errorDetail = "Local variable metadata signatures are different.";
+				if (Arguments != other.Arguments) {
+					errorDetail = "Arguments are different";
 					return false;
 				}
-				if (LocalVariables != other.LocalVariables) {
-					errorDetail = "Local variable definitions are different.";
+				if (ReturnType != other.ReturnType) {
+					errorDetail = "Return types are different";
 					return false;
 				}
-				if (!IL_MethodBody.SequenceEqual(other.IL_MethodBody)) {
-					errorDetail = "IL body of the method is different.";
+				if (IL_BodyHashcode != other.IL_BodyHashcode) {
+					errorDetail = "IL body hashcode of the method is different";
 					return false;
 				}
 
@@ -282,64 +414,89 @@ namespace SuperQoLity.SuperMarket.ModUtils {
 
 		}
 
-		/*
-		private class MethodSignature {
+	}
 
-			internal int LocalSignatureMetadataToken { get; set; }
-			internal string LocalVariables { get; set; }
-			internal byte[] IL_MethodBody { get; set; }
+	public class CheckResult {
 
-			internal bool Equals(MethodSignature other, out string errorDetail) {
-				errorDetail = null;
+		public enum SignatureCheckResult {
+			Unchecked,
+			Started,    //To detect errors in flow. The result must never be this.
+			FileError,
+			NoSignaturesAdded,
+			NoPreviousSignatures,
+			SignaturesDifferent,
+			SignaturesOk
+		}
 
-				if (LocalSignatureMetadataToken != other.LocalSignatureMetadataToken) {
-					errorDetail = "Local variable metadata signatures are different.";
+		internal CheckResult() {
+			ResultMessage = "";
+			Result = SignatureCheckResult.Unchecked;
+		}
+
+		internal CheckResult(SignatureCheckResult result, string resultMessage) {
+			ResultMessage = resultMessage;
+			Result = result;
+		}
+
+		internal CheckResult SetValues(SignatureCheckResult result, string resultMessage) {
+			ResultMessage = resultMessage;
+			Result = result;
+			return this;
+		}
+
+		internal void AddErrorMessage(string resultMessage) {
+			if (ResultMessage != "") {
+				ResultMessage += $"\n{resultMessage}";
+			} else {
+				ResultMessage = resultMessage;
+			}
+		}
+
+		/// <summary>
+		/// If a message exists, logs it and optionally shows it in-game.
+		/// </summary>
+		/// <param name="logLevel">Log level.</param>
+		/// <param name="onlyWhenNotOk">Only logs if the result was some kind of problem we should be aware of.</param>
+		/// <param name="showInGame">If it should show in-game too.</param>
+		public void LogResultMessage(BepInExTimeLogger.LogTier logLevel, bool onlyWhenNotOk, bool showInGame) {
+			if (ShouldLogMessage(onlyWhenNotOk)) {
+				BepInExTimeLogger.Logger.LogTime(logLevel, ResultMessage, TimeLoggerBase.LogCategories.Loading, showInGame);
+			}
+		}
+
+		private bool ShouldLogMessage(bool onlyWhenNotOk) {
+			if (string.IsNullOrEmpty(ResultMessage)) {
+				if (Result == SignatureCheckResult.Unchecked) {
 					return false;
+				} else {
+					//This shouldnt happen.
+					ResultMessage = "Result message was empty for a result where it is not allowed.";
+					return true;
 				}
-				if (LocalVariables != other.LocalVariables) {
-					errorDetail = "Local variable definitions are different.";
-					return false;
-				}
-				if (!IL_MethodBody.SequenceEqual(other.IL_MethodBody)) {
-					errorDetail = "IL body of the method is different.";
-					return false;
-				}
-
-				return true;
 			}
 
-		}
-		*/
-
-		/* Deprecated. Leave for now.
-		
-		private byte[] GetSignaturesByteArray() {
-			List<byte[]> listByteArrSignatures = new();
-
-			foreach (var methodSig in methodSignatures) {
-
-				listByteArrSignatures.Add([
-					.. IntToByteArray(methodSig.Value.LocalSignatureMetadataToken),
-					.. Encoding.Unicode.GetBytes(methodSig.Value.LocalVariables.ToString()),
-					.. methodSig.Value.IL_MethodBody
-				]);
+			if (onlyWhenNotOk && (Result == SignatureCheckResult.SignaturesOk || Result == SignatureCheckResult.NoPreviousSignatures)) {
+				return false;
 			}
 
-			return listByteArrSignatures.SelectMany(b => b).ToArray();
+			return true;
 		}
 
-		private byte[] IntToByteArray(int intValue) {
-			byte[] intBytes = BitConverter.GetBytes(intValue);
-			if (BitConverter.IsLittleEndian) {
-				Array.Reverse(intBytes);
+
+		public SignatureCheckResult Result { get; internal set; }
+
+		private string _result;
+
+		public string ResultMessage {
+			get { return _result; }
+			private set {
+				if (value == null) {
+					_result = "";
+				}
+				_result = value;
 			}
-			return intBytes;
 		}
 
-		private int ByteArrayToInt(byte[] byteArrayValue) {
-			return BitConverter.ToInt16(byteArrayValue, 0);
-		}
-		*/
 	}
 
 }
