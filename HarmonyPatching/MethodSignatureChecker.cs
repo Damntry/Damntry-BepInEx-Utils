@@ -274,9 +274,16 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 				harmonyMethod = harmonyClassAttr.Merge(harmonyMethod);
 			}
 
-			//Get MethodInfo from the info.
-			return harmonyMethod.method ??
-				AccessTools.Method(harmonyMethod.declaringType, harmonyMethod.methodName, harmonyMethod.argumentTypes);
+			//Access the internal method that handles getting a methodInfo, taking into account all harmony attributes.
+			//TODO 3 - Cache this method. If its null I guess I ll have to use the older method and try/catch it since it
+			//		doesnt work in cases where the methodType is not MethodType.Normal.
+			//Old method:
+			//return harmonyMethod.method ??
+			//	AccessTools.Method(harmonyMethod.declaringType, harmonyMethod.methodName, harmonyMethod.argumentTypes);
+			MethodInfo mInfoInternal = AccessTools.Method("HarmonyLib.PatchTools:GetOriginalMethod", [typeof(HarmonyMethod)]);
+			harmonyMethod.methodType ??= MethodType.Normal;
+
+			return (MethodInfo)mInfoInternal.Invoke(null, [harmonyMethod]);
 		}
 
 		private MethodSignature CreateMethodSignature(MethodInfo methodInfo, MethodDefinition methodDef) {

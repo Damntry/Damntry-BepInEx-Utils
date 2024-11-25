@@ -41,8 +41,10 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses.Inherita
 
 		public void AutoPatchResultEvent(AutoPatchResult autoPatchResult) => IsPatchActive = IsPatchActiveFromResult(autoPatchResult);
 
-
 		public override event Action<bool> OnPatchFinished;
+
+		/// <summary>Purely used for derived classes to have a method for when patching finishes.</summary>
+		public virtual void OnPatchFinishedVirtual(bool IsActive) { }
 
 
 		public override List<MethodInfo> PatchInstance() {
@@ -56,6 +58,8 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses.Inherita
 
 		public override void RaiseEventOnAutoPatchFinish(AutoPatchResult autoPatchResult) {
 			AutoPatchResultEvent(autoPatchResult);
+
+			OnPatchFinishedVirtual(IsPatchActive);
 
 			//Raise event for all subscribers
 			if (OnPatchFinished != null) {
