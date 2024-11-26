@@ -59,8 +59,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 			currentMethodSignatures = new Dictionary<string, MethodSignature>();
 			LastCheckResult = new CheckResult();
 
-			var pathPluginAssemblyFile = AssemblyUtils.GetAssemblyDllFolderPath(pluginType);
-			string pathFolderSignatures = pathPluginAssemblyFile + Path.DirectorySeparatorChar + nameof(MethodSignatureChecker);
+			string pathFolderSignatures = AssemblyUtils.GetCombinedPathFromAssemblyFolder(pluginType, nameof(MethodSignatureChecker));
 
 			if (!Directory.Exists(pathFolderSignatures)) {
 				Directory.CreateDirectory(pathFolderSignatures);
@@ -195,8 +194,6 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		/// Gets a Mono.Cecil MethodDefinition from a MethodInfo.
 		/// </summary>
 		private MethodDefinition GetMethodDefinition(MethodInfo methodInfo) {
-			//TODO Global 6 - Check which method performs faster while still working most of the time, to make it first.
-
 			string dllPath = AssemblyUtils.GetAssemblyDllFilePath(methodInfo.DeclaringType);
 			//TODO Global 5 - I should be caching this per dllPath
 			var assemblyDef = AssemblyDefinition.ReadAssembly(dllPath);
@@ -205,6 +202,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 				.GetType(methodInfo.DeclaringType.FullName)
 				.FindMethod(methodInfo.GetID());
 
+			//TODO Global 6 - Check which method performs faster while still working most of the time, to make it the first option.
 			if (methodDef == null) {
 				//Try second method.
 				methodDef = MethodBaseToMethodDefinition(methodInfo);
