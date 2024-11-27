@@ -7,10 +7,9 @@ using Damntry.UtilsBepInEx.Logging;
 using Damntry.UtilsBepInEx.ConfigurationManager.SettingAttributes;
 using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces;
 
-namespace Damntry.UtilsBepInEx.ConfigurationManager
-{
+namespace Damntry.UtilsBepInEx.ConfigurationManager {
 
-    public class ConfigManagerController {
+	public class ConfigManagerController {
 
 		internal const string ConfigMngFullTypeName = "ConfigurationManager.ConfigurationManager";
 
@@ -35,7 +34,7 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager
 			if (configFile == null) {
 				throw new ArgumentNullException(nameof(configFile));
 			}
-			
+
 
 			this.configFile = configFile;
 
@@ -67,7 +66,7 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager
 			if (!skipSectionOrder) {
 				currentSectionOrder++;
 			}
-			
+
 			currentConfigOrder = int.MaxValue;  //Higher numbers go first. Only affects ordering within a section.
 
 			currentSectionName = sectionName;
@@ -93,7 +92,7 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager
 		}
 
 
-		public ConfigEntry<bool> AddSectionNote(string sectionText, string description = null, 
+		public ConfigEntry<bool> AddSectionNote(string sectionText, string description = null,
 			IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, bool isAdvanced = false) {
 
 			//HACK Global 4 - Even though this string looks empty, there is a zero-width space character in it so Bepinex doesnt
@@ -115,7 +114,7 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager
 		/// # Default value: {textboxMessage}
 		/// {key} = {textboxMessage}
 		/// </summary>
-		public ConfigEntry<string> AddQuasiNote(string sectionName, string key, string textboxMessage, 
+		public ConfigEntry<string> AddQuasiNote(string sectionName, string key, string textboxMessage,
 				string description = null, IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, bool isAdvanced = false) {
 			return AddQuasiNote(sectionName, key, textboxMessage, description, patchInstanceDependency, hidden, isAdvanced, skipSectionIncrease: false);
 		}
@@ -176,7 +175,7 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager
 			return AddConfig(sectionName, key, defaultValue, description, patchInstanceDependency, hidden, disabled, acceptableVal: acceptableValueRange, showRangeAsPercent, hideDefaultButton, isAdvanced);
 		}
 
-		private ConfigEntry<T> AddConfig<T>(string sectionName, string key, T defaultValue, string description = null, IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, bool disabled = false, 
+		private ConfigEntry<T> AddConfig<T>(string sectionName, string key, T defaultValue, string description = null, IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, bool disabled = false,
 				AcceptableValueBase acceptableVal = null, bool showRangeAsPercent = false, bool hideDefaultButton = false, bool isAdvanced = false, bool skipSectionIncrease = false) {
 			SetSection(sectionName, skipSectionIncrease);
 
@@ -217,7 +216,7 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager
 			}
 
 			if (patchInstanceDependency != null) {
-				hidden = true;	//If it depends on a patch, hide by default so the patch unhides it later on in its own event.
+				hidden = true;  //If it depends on a patch, hide by default so the patch unhides it later on in its own event.
 			}
 
 			ConfigDescription configDesc = new ConfigDescription(description, acceptableVal,
