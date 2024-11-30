@@ -151,6 +151,12 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager {
 				disabled: true, hideDefaultButton: true, acceptableVal: null, skipSectionIncrease: skipSectionIncrease);
 		}
 
+
+		/// <typeparam name="T">
+		/// By default it can be any of the types supported in <see cref="BepInEx.Configuration.TomlTypeConverter"/>,
+		/// but new ones can be added with <see cref="BepInEx.Configuration.TomlTypeConverter.AddConverter(Type, TypeConverter)"/>
+		/// so its better to check <see cref="BepInEx.Configuration.TomlTypeConverter.GetSupportedTypes"/> at runtime.
+		/// </typeparam>
 		/// <param name="patchInstanceDependency">
 		/// Specifies a dependency for this setting. The setting will be hidden until the instance has been successfully patched and is active.
 		/// </param>
