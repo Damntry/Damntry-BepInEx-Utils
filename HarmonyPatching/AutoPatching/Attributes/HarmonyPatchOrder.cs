@@ -3,11 +3,6 @@ using HarmonyLib;
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Attributes {
 
-	//TODO 1 - Wait a second. If the autopatcher is just going in whatever order it finds the patches,
-	//		what happens with HarmonyBefore attributes? I imagine Harmony puts them in a queue, or
-	//		does it only work when you do a PatchAll of everything?
-	//		Check it out and update the class comment below if necessary.
-
 	/// <summary>
 	/// Attribute to set this class or method to be patched before another auto patch instance.
 	/// Regardless of order in which auto patches are executed, Harmony will get in charge of

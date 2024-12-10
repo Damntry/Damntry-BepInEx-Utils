@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net48</TargetFramework>
+    <TargetFramework>net481</TargetFramework>
     <OutputType>Library</OutputType>
     <RootNamespace>Damntry.UtilsBepInEx</RootNamespace>
     <AssemblyName>Damntry.Globals.BepInEx</AssemblyName>
@@ -22,7 +22,8 @@
     <PackageReference Include="System.Data.DataSetExtensions" Version="4.5.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Damntry Globals\!Damntry Globals.csproj" />
+    <ProjectReference Include="..\Damntry Globals Unity\Damntry Globals Unity.csproj" />
+    <ProjectReference Include="..\Damntry Globals\Damntry Globals.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Properties\AssemblyInfo.tt">
