@@ -5,15 +5,23 @@ using HarmonyLib;
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.Helpers {
 
+	//2 - TODO I could make this a Singleton and, instead of using a dictionary to save the args and then having 
+	//	to refer the argument you want with a constant or something like that, see if I can use templating
+	//	to add new attributes right here in this class. Maybe there is a way of having a cs class with snippets of
+	//	templating? Otherwise make this class abstract, and a new template file will set a new class to derive it
+	//	and create the arguments and instance so it generates the class that will be used to refer to the arguments.
+	//
+	//	Also make sure that the templating auto generates when building, and not just when saving. I remember seeing that somewhere.
 
 	/// <summary>
-	/// This is for when you have methods where one calls the other, and you need to transpile the
-	/// called method, but with different arguments.
+	/// Helps passing new arguments to a transpiled class.
+	/// This is for when you have a method A() that calls B(), but B is a transpiled method and you need
+	/// to pass new arguments.
 	/// You cant just add new arguments to a method through harmony, or IL load the arguments from 
 	/// the receiving method. The method signature must be redefined, but I havent found a way that
 	/// also works with Harmony.
-	/// This is the next thing I could think of to at least ease handling of what is basically going
-	/// to be used as a global static field with IL support.
+	/// So instead, I have this class that represents an argument, and eases handling the IL side, but 
+	/// basically its to be used as a global static field with IL support.
 	/// </summary>
 	public class ArgumentHelper<T> {
 

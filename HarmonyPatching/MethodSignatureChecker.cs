@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using Damntry.Utils.Reflection;
 using Damntry.Utils.Logging;
+using Damntry.UtilsBepInEx.HarmonyPatching.Exceptions;
 using HarmonyLib;
 using MonoMod.Utils;
 using Mono.Cecil;
@@ -13,7 +14,7 @@ using Mono.Collections.Generic;
 using Mono.Cecil.Cil;
 using Newtonsoft.Json;
 using static Damntry.UtilsBepInEx.HarmonyPatching.CheckResult;
-using Damntry.UtilsBepInEx.HarmonyPatching.Exceptions;
+
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching {
 
@@ -68,15 +69,6 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		}
 
 		/// <summary>
-		/// 
-		/// </summary>
-		public void PopulateMethodSignaturesFromHarmonyPatches() {
-			foreach (var targetMethodInfo in GetAllPatchMethodTargets(pluginType)) {
-				AddMethodSignature(targetMethodInfo);
-			}
-		}
-
-		/// <summary>
 		/// Initialized this object, adds all harmony patched method signatures, and starts to check immediately.
 		/// For when you dont need to add method signatures manually.
 		/// </summary>
@@ -92,6 +84,15 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 			return mSigCheck;
 		}
 
+		/// <summary>
+		/// Automatically adds target methods to be checked, by getting all
+		/// harmony patches that exist in the assembly passed to the constructor.
+		/// </summary>
+		public void PopulateMethodSignaturesFromHarmonyPatches() {
+			foreach (var targetMethodInfo in GetAllPatchMethodTargets(pluginType)) {
+				AddMethodSignature(targetMethodInfo);
+			}
+		}
 
 		/// <summary>
 		/// Adds a new method signature to later check if a previous one exist of the same method to compare against.
@@ -175,6 +176,9 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 			}
 
 			MethodDefinition methodDef = GetMethodDefinition(methodInfo);
+			if (methodDef == null) {
+				return;
+			}
 
 			MethodSignature mSig = CreateMethodSignature(methodInfo, methodDef);
 
@@ -193,20 +197,28 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		/// Gets a Mono.Cecil MethodDefinition from a MethodInfo.
 		/// </summary>
 		private MethodDefinition GetMethodDefinition(MethodInfo methodInfo) {
-			string dllPath = AssemblyUtils.GetAssemblyDllFilePath(methodInfo.DeclaringType);
-			//TODO Global 5 - I should be caching this per dllPath
-			var assemblyDef = AssemblyDefinition.ReadAssembly(dllPath);
+			MethodDefinition methodDef = MethodBaseToMethodDefinition(methodInfo);
 
-			MethodDefinition methodDef = assemblyDef.MainModule
-				.GetType(methodInfo.DeclaringType.FullName)
-				.FindMethod(methodInfo.GetID());
-
-			//TODO Global 6 - Check which method performs faster while still working most of the time, to make it the first option.
 			if (methodDef == null) {
-				//Try second method.
-				methodDef = MethodBaseToMethodDefinition(methodInfo);
+				//Try second way
+				string dllPath = AssemblyUtils.GetAssemblyDllFilePath(methodInfo.DeclaringType);
+				//TODO Global 5 - I should be caching this per dllPath
+				var assemblyDef = AssemblyDefinition.ReadAssembly(dllPath);
+				try {
+					methodDef = assemblyDef.MainModule
+						.GetType(methodInfo.DeclaringType.FullName)
+						.FindMethod(methodInfo.GetID(), false);
+				} catch (Exception ex) {
+					//TODO Global 8 - There is a case where GetType can return null. Its either when targetting a
+					//	method in a nested class, or a class that returns an IEnumerator and yields.
+					//	It matters little since its relatively specific and MethodBaseToMethodDefinition has, so
+					//	far, taken care of everything.
+					TimeLogger.Logger.LogTimeDebug(TimeLogger.FormatException(ex, "Error while trying to convert " +
+						"MethodInfo to MethodDefinition. You can safely ignore this error if you are not the dev."), 
+						TimeLogger.LogCategories.MethodChk);
+				}
 			}
-
+			
 			return methodDef;
 		}
 
@@ -270,17 +282,18 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 				HarmonyMethod harmonyClassAttr = HarmonyMethod.Merge(HarmonyMethodExtensions.GetFromType(methodClassType));
 				harmonyMethod = harmonyClassAttr.Merge(harmonyMethod);
 			}
-
-			//Access the internal method that handles getting a methodInfo, taking into account all harmony attributes.
-			//TODO 3 - Cache this method. If its null I guess I ll have to use the older method and try/catch it since it
-			//		doesnt work in cases where the methodType is not MethodType.Normal.
-			//Old method:
-			//return harmonyMethod.method ??
-			//	AccessTools.Method(harmonyMethod.declaringType, harmonyMethod.methodName, harmonyMethod.argumentTypes);
-			MethodInfo mInfoInternal = AccessTools.Method("HarmonyLib.PatchTools:GetOriginalMethod", [typeof(HarmonyMethod)]);
 			harmonyMethod.methodType ??= MethodType.Normal;
 
-			return (MethodInfo)mInfoInternal.Invoke(null, [harmonyMethod]);
+			//Access the internal method that handles getting a methodInfo, taking into account all harmony attributes.
+			MethodInfo mInfoInternal = AccessTools.Method("HarmonyLib.PatchTools:GetOriginalMethod", [typeof(HarmonyMethod)]);
+			if (mInfoInternal != null) {
+				return (MethodInfo)mInfoInternal.Invoke(null, [harmonyMethod]);
+			} else {
+				TimeLogger.Logger.LogTimeWarning("Reflection access to \"HarmonyLib.PatchTools:GetOriginalMethod\" returned " +
+					"null. Using backup method.", TimeLogger.LogCategories.MethodChk);
+				return AccessTools.Method(harmonyMethod.declaringType, harmonyMethod.methodName, harmonyMethod.argumentTypes);
+			}
+
 		}
 
 		private MethodSignature CreateMethodSignature(MethodInfo methodInfo, MethodDefinition methodDef) {
@@ -338,7 +351,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 				previousMethodSignatures = JsonConvert.DeserializeObject<Dictionary<string, MethodSignature>>(jsonString);
 			} catch (Exception ex) {
 				checkResult.SetValues(SignatureCheckResult.FileError,
-					TimeLoggerBase.FormatException(ex, "Error while reading and deserializing from file " +
+					TimeLogger.FormatException(ex, "Error while reading and deserializing from file " +
 					$"\"{pathFileMethodSignatures}\". It might be corrupted. Trying to delete file and skipping loading signatures."));
 
 				try {	//Try to delete but if it doesnt work it wont matter. This is a convenience for the dev, not the user.
@@ -385,20 +398,6 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 			public string ReturnType { get; set; }
 			public int IL_BodyHashcode { get; set; }
 
-			/* Test to see IL
-			public void Set_IL_BodyHashcode(Collection<Instruction> instructions) {
-				if (instructions == null) {
-					throw new ArgumentNullException(nameof(instructions));
-				}
-
-				StringBuilder sb = new StringBuilder();
-				foreach (var instruction in instructions) {
-					sb.AppendLine(instruction.ToString());
-				}
-
-				IL_BodyHashcode = sb.ToString();
-			}
-			*/
 			/// <summary>
 			/// Taken from https://stackoverflow.com/a/263416/739345 by Jon Skeet
 			/// </summary>
@@ -482,9 +481,9 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		/// <param name="logLevel">Log level.</param>
 		/// <param name="onlyWhenNotOk">Only logs if the result was some kind of problem we should be aware of.</param>
 		/// <param name="showInGame">If it should show in-game too.</param>
-		public void LogResultMessage(TimeLoggerBase.LogTier logLevel, bool onlyWhenNotOk, bool showInGame) {
+		public void LogResultMessage(TimeLogger.LogTier logLevel, bool onlyWhenNotOk, bool showInGame) {
 			if (ShouldLogMessage(onlyWhenNotOk)) {
-				TimeLoggerBase.Logger.LogTime(logLevel, ResultMessage, TimeLoggerBase.LogCategories.MethodChk, showInGame);
+				TimeLogger.Logger.LogTime(logLevel, ResultMessage, TimeLogger.LogCategories.MethodChk, showInGame);
 			}
 		}
 
