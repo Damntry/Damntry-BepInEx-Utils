@@ -6,7 +6,7 @@ namespace Damntry.UtilsBepInEx.Logging {
 
 		public static void DEBUG(string message, bool onlyIfTrue = true) {
 			if (onlyIfTrue) {
-				BepInExTimeLogger.Logger.LogTimeWarning(message, TimeLoggerBase.LogCategories.TempTest);
+				TimeLogger.Logger.LogTimeWarning(message, TimeLogger.LogCategories.TempTest);
 			}
 		}
 

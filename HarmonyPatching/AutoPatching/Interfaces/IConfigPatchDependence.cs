@@ -1,6 +1,5 @@
 ﻿using BepInEx.Configuration;
-using Damntry.UtilsBepInEx.ConfigurationManager;
-using Damntry.UtilsBepInEx.ConfigurationManager.SettingAttributes;
+using Damntry.UtilsBepInEx.Configuration.ConfigurationManager;
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces {
 

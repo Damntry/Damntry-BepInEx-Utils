@@ -1,4 +1,4 @@
-﻿namespace Damntry.UtilsBepInEx.ConfigurationManager.SettingAttributes {
+﻿namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager.SettingAttributes {
 
 	//Class provided by ConfigurationManager
 	//https://github.com/BepInEx/BepInEx.ConfigurationManager/blob/master/ConfigurationManagerAttributes.cs

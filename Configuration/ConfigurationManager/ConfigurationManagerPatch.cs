@@ -2,7 +2,7 @@
 using Damntry.UtilsBepInEx.HarmonyPatching.Attributes;
 using HarmonyLib;
 
-namespace Damntry.UtilsBepInEx.ConfigurationManager {
+namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 
 	[HarmonyPatch]
 	public class ConfigurationManagerPatch {

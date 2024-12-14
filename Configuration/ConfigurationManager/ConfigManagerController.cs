@@ -3,11 +3,10 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using System.Reflection;
 using Damntry.Utils.Reflection;
-using Damntry.UtilsBepInEx.Logging;
-using Damntry.UtilsBepInEx.ConfigurationManager.SettingAttributes;
 using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces;
+using Damntry.UtilsBepInEx.Configuration.ConfigurationManager.SettingAttributes;
 
-namespace Damntry.UtilsBepInEx.ConfigurationManager {
+namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 
 	public class ConfigManagerController {
 
@@ -85,7 +84,7 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager {
 					ReflectionHelper.CallMethod(ConfigurationManagerPatch.ConfigMngInstance, refreshMethodName);
 					return true;
 				} catch (Exception e) {
-					BepInExTimeLogger.Logger.LogTimeExceptionWithMessage($"Error when trying to call the method to refresh ConfigurationManager GUI.", e, Utils.Logging.TimeLoggerBase.LogCategories.Config);
+					Utils.Logging.TimeLogger.Logger.LogTimeExceptionWithMessage($"Error when trying to call the method to refresh ConfigurationManager GUI.", e, Utils.Logging.TimeLogger.LogCategories.Config);
 				}
 			}
 			return false;
@@ -153,9 +152,9 @@ namespace Damntry.UtilsBepInEx.ConfigurationManager {
 
 
 		/// <typeparam name="T">
-		/// By default it can be any of the types supported in <see cref="BepInEx.Configuration.TomlTypeConverter"/>,
-		/// but new ones can be added with <see cref="BepInEx.Configuration.TomlTypeConverter.AddConverter(Type, TypeConverter)"/>
-		/// so its better to check <see cref="BepInEx.Configuration.TomlTypeConverter.GetSupportedTypes"/> at runtime.
+		/// By default it can be any of the types supported in <see cref="TomlTypeConverter"/>,
+		/// but new ones can be added with <see cref="TomlTypeConverter.AddConverter(Type, TypeConverter)"/>
+		/// so its better to check <see cref="TomlTypeConverter.GetSupportedTypes"/> at runtime.
 		/// </typeparam>
 		/// <param name="patchInstanceDependency">
 		/// Specifies a dependency for this setting. The setting will be hidden until the instance has been successfully patched and is active.

@@ -1,7 +1,6 @@
 ﻿using System;
 using Damntry.Utils.Reflection;
 using Damntry.UtilsBepInEx.HarmonyPatching.Exceptions;
-using Damntry.UtilsBepInEx.Logging;
 using HarmonyLib;
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.Attributes {

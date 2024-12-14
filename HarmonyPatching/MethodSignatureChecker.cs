@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Damntry.UtilsBepInEx.Logging;
 using Damntry.Utils.Reflection;
 using Damntry.Utils.Logging;
 using HarmonyLib;
@@ -339,7 +338,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 				previousMethodSignatures = JsonConvert.DeserializeObject<Dictionary<string, MethodSignature>>(jsonString);
 			} catch (Exception ex) {
 				checkResult.SetValues(SignatureCheckResult.FileError,
-					BepInExTimeLogger.FormatException(ex, "Error while reading and deserializing from file " +
+					TimeLoggerBase.FormatException(ex, "Error while reading and deserializing from file " +
 					$"\"{pathFileMethodSignatures}\". It might be corrupted. Trying to delete file and skipping loading signatures."));
 
 				try {	//Try to delete but if it doesnt work it wont matter. This is a convenience for the dev, not the user.
@@ -483,9 +482,9 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		/// <param name="logLevel">Log level.</param>
 		/// <param name="onlyWhenNotOk">Only logs if the result was some kind of problem we should be aware of.</param>
 		/// <param name="showInGame">If it should show in-game too.</param>
-		public void LogResultMessage(BepInExTimeLogger.LogTier logLevel, bool onlyWhenNotOk, bool showInGame) {
+		public void LogResultMessage(TimeLoggerBase.LogTier logLevel, bool onlyWhenNotOk, bool showInGame) {
 			if (ShouldLogMessage(onlyWhenNotOk)) {
-				BepInExTimeLogger.Logger.LogTime(logLevel, ResultMessage, TimeLoggerBase.LogCategories.Loading, showInGame);
+				TimeLoggerBase.Logger.LogTime(logLevel, ResultMessage, TimeLoggerBase.LogCategories.MethodChk, showInGame);
 			}
 		}
 

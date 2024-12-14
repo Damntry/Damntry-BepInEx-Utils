@@ -6,13 +6,13 @@ using System.Reflection;
 [assembly: AssemblyDescription("<#=Description#>")]
 [assembly: AssemblyCompany("<#=AuthorName#>")]
 [assembly: AssemblyProduct("<#=ProductName#>")]
-[assembly: AssemblyCopyright($"Copyright © <#=AuthorName#> <#=DateTime.Now.Year#>")]
+[assembly: AssemblyCopyright("Copyright © <#=AuthorName#> <#=DateTime.Now.Year#>")]
 [assembly: AssemblyVersion("<#=Version#>")]
 [assembly: AssemblyFileVersion("<#=Version#>")]
 
 <#+
     string ProductName = "Damntry BepInEx Globals";
 	string Description = "Utils usable in any type of BepInEx project";
-	string Version = "0.5.5";
+	string Version = "0.5.8";
 	string AuthorName = "Damntry";
 #>

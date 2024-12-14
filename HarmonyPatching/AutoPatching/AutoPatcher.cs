@@ -4,7 +4,6 @@ using System.Linq;
 using System.Reflection;
 using Damntry.Utils.Logging;
 using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses;
-using Damntry.UtilsBepInEx.Logging;
 
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
@@ -71,12 +70,12 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 			}
 
 			if (patchErrorCount == 0) {
-				BepInExTimeLogger.Logger.LogTimeInfo($"All Auto-Patches applied successfully.", TimeLoggerBase.LogCategories.Loading);
+				TimeLogger.Logger.LogTimeInfo($"All Auto-Patches applied successfully.", TimeLogger.LogCategories.Loading);
 
 				return true;
 			} else {
-				BepInExTimeLogger.Logger.LogTimeFatal($"Oh oh, {patchErrorCount} out of {AutoPatchContainer.GetRegisteredAutoPatches().Count() - patchDisabledCount} patches failed. " +
-					$"Check above for errors.", TimeLoggerBase.LogCategories.Loading);
+				TimeLogger.Logger.LogTimeFatal($"Oh oh, {patchErrorCount} out of {AutoPatchContainer.GetRegisteredAutoPatches().Count() - patchDisabledCount} patches failed. " +
+					$"Check above for errors.", TimeLogger.LogCategories.Loading);
 
 				return false;
 			}
@@ -99,10 +98,10 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 				}
 
 			} catch (Exception ex) {
-				BepInExTimeLogger.Logger.LogTimeExceptionWithMessage($"Error auto patching class {autoPatchType.FullName}.", ex, TimeLoggerBase.LogCategories.Loading);
+				TimeLogger.Logger.LogTimeExceptionWithMessage($"Error auto patching class {autoPatchType.FullName}.", ex, TimeLogger.LogCategories.Loading);
 				//Show custom message in game.
 				if (autoPatchInstance != null) {
-					BepInExTimeLogger.Logger.LogTimeErrorShowInGame(autoPatchInstance.ErrorMessageOnAutoPatchFail, TimeLoggerBase.LogCategories.AutoPatch);
+					TimeLogger.Logger.LogTimeErrorShowInGame(autoPatchInstance.ErrorMessageOnAutoPatchFail, TimeLogger.LogCategories.AutoPatch);
 
 					if (autoPatchInstance.IsRollbackOnAutoPatchFail == true) {
 						autoPatchInstance.UnpatchInstance();
@@ -134,7 +133,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 				autoPatchedInstanceBases.Cast<AutoPatchedInstanceBase>().(item);
 			}
 
-			BepInExTimeLogger.Logger.LogTimeExceptionWithMessage("", ex, TimeLoggerBase.LogCategories.AutoPatch);
+			TimeLogger.Logger.LogTimeExceptionWithMessage("", ex, TimeLogger.LogCategories.AutoPatch);
 			return autoPatchedInstanceBases;
 
 			return (IEnumerable<AutoPatchedInstanceBase>)assembly.GetTypes().Where

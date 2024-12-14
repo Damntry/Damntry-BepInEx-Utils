@@ -1,11 +1,11 @@
 ﻿using System;
 using BepInEx.Configuration;
-using Damntry.UtilsBepInEx.ConfigurationManager.SettingAttributes;
-using Damntry.UtilsBepInEx.ConfigurationManager;
 using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces;
 using static Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.AutoPatcher;
 using System.Collections.Generic;
 using System.Reflection;
+using Damntry.UtilsBepInEx.Configuration.ConfigurationManager.SettingAttributes;
+using Damntry.UtilsBepInEx.Configuration.ConfigurationManager;
 
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses {
