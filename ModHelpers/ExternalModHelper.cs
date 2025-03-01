@@ -1,6 +1,6 @@
 ﻿using System;
-using BepInEx.Bootstrap;
 using BepInEx;
+using BepInEx.Bootstrap;
 
 
 namespace Damntry.UtilsBepInEx.ModHelpers {
@@ -94,15 +94,20 @@ namespace Damntry.UtilsBepInEx.ModHelpers {
 	/// override, at least, the GUID as a const value, since attributes cant use strings assigned at runtime.
 	/// </summary>
 	public class ModInfoData {
+
 		internal ModInfoData(string GUID, string modName, Version SupportedVersion) {
 			this.GUID = GUID;
 			this.Name = modName; 
 			this.SupportedVersion = SupportedVersion;
 		}
 
-		public ModInfoData(Version SupportedVersion) {
-			this.SupportedVersion = SupportedVersion;
+		public ModInfoData(ModInfoData modInfo) {
+			this.GUID = modInfo.GUID;
+			this.Name = modInfo.Name;
+			this.SupportedVersion = modInfo.SupportedVersion;
+			this.LoadedVersion = modInfo.LoadedVersion;
 		}
+
 
 		public string GUID { get; internal set; }
 		public string Name { get; internal set; }

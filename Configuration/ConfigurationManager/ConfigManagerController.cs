@@ -1,16 +1,51 @@
 ﻿using System;
-using BepInEx.Configuration;
-using HarmonyLib;
 using System.Reflection;
+using BepInEx;
+using BepInEx.Configuration;
+using Damntry.Utils.Logging;
 using Damntry.Utils.Reflection;
-using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces;
+using Damntry.UtilsBepInEx.Configuration.ConfigurationManager.Patch;
 using Damntry.UtilsBepInEx.Configuration.ConfigurationManager.SettingAttributes;
+using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces;
+using HarmonyLib;
 
 namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
+
+	public enum MultiplayerModInstallSide {
+		/// <summary>Default value. Does nothing.</summary>
+		Unspecified,
+		/// <summary>Can be used by host or client, and doesnt affect each other (UI elements for example)</summary>
+		Any,
+		/// <summary>
+		/// Only the host needs to have it installed. If installed on the client, it does nothing.
+		/// Generally, this setting functionality must be controlled so only the
+		/// host executes it, and the client doesnt.
+		/// </summary>
+		HostSideOnly,
+		/// <summary>
+		/// Needs to be installed in the host, and can also be installed in the client. If the client doesnt have 
+		/// it installed, the functionality will not work for him, but it still will for the host. If the Host doesnt 
+		/// have the mod, and the client does, the feature wont work at all, by design or because of the way it works.
+		/// </summary>
+		HostAndOptionalClient,
+		/// <summary>
+		/// Needs to be installed in the host, and should be installed in the client for it to work at its best.
+		/// Some degraded functionality might be expected for the client, but it will still work overall with no 
+		/// critical disruptions.
+		/// Example: A feature to change the speed of non gameplay vital NPCs, whos position is periodically sent
+		/// by the host, but smoothed with local speed values by the client.
+		/// </summary>
+		HostAndSoftClient,
+		/// <summary>Needs to be installed in both the host and the client for it to even work in a meaningful way.</summary>
+		HostAndHardClient
+	}
 
 	public class ConfigManagerController {
 
 		internal const string ConfigMngFullTypeName = "ConfigurationManager.ConfigurationManager";
+
+		private const string InstallSideInitialDescription = "[Multiplayer requirements] " +
+			"This setting requires that the mod ";
 
 		private ConfigFile configFile;
 
@@ -30,23 +65,18 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 
 
 		public ConfigManagerController(ConfigFile configFile) {
-			if (configFile == null) {
-				throw new ArgumentNullException(nameof(configFile));
-			}
-
-
-			this.configFile = configFile;
+			this.configFile = configFile ?? throw new ArgumentNullException(nameof(configFile));
 
 			currentSectionOrder = 0;
 			currentConfigOrder = int.MaxValue;
 
 			//Check that the ConfigurationManager plugin is installed.
 			bool configManagerLoaded = AssemblyUtils.GetTypeFromLoadedAssemblies(ConfigMngFullTypeName) != null;
-
 			if (configManagerLoaded) {
 				//Enable patch to get an instance of the ConfigurationManager object in the assembly.
-				ConfigurationManagerPatch.Harmony.Value.PatchAll(typeof(ConfigurationManagerPatch));
+				ConfigurationManagerPatch.PatchSelf();
 			}
+			ConfigEntryBasePatch.PatchSelf();
 		}
 
 		private void SetSection(string sectionName, bool skipSectionOrder = false) {
@@ -74,9 +104,10 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 		/// <summary>
 		/// Refreshes the settings and GUI of the configuration manager plugin.
 		/// It makes calls through reflection to unreferenced assembly code, and
-		/// thus it may fail at any moment in the future, but it avoids throwing errors.
+		/// thus it may fail at any moment in the future.
+		/// In case of exception, logs and returns false to continue program flow.
 		/// </summary>
-		public bool RefreshGUI() {
+		public static bool RefreshGUI() {
 			if (ConfigurationManagerPatch.ConfigMngInstance != null) {
 				string refreshMethodName = "BuildSettingList";
 
@@ -84,49 +115,64 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 					ReflectionHelper.CallMethod(ConfigurationManagerPatch.ConfigMngInstance, refreshMethodName);
 					return true;
 				} catch (Exception e) {
-					Utils.Logging.TimeLogger.Logger.LogTimeExceptionWithMessage($"Error when trying to call the method to refresh ConfigurationManager GUI.", e, Utils.Logging.TimeLogger.LogCategories.Config);
+					TimeLogger.Logger.LogTimeExceptionWithMessage($"Error when trying to call the method to refresh ConfigurationManager GUI.", e, Utils.Logging.LogCategories.Config);
 				}
 			}
 			return false;
 		}
 
-
+		/// <summary>
+		/// Creates a new section with the specified text, meant to be shown as a more visible message.
+		/// Below the note there is an empty setting with readonly true value so in Configuration Manager it 
+		/// shows as a checkbox, since its the least notorious component.
+		/// Description should be left empty for the config file.
+		/// The format is as follows in the config file:
+		///<code>
+		/// [{sectionText}]
+		///
+		///​ = true
+		///</code>
+		/// </summary>
 		public ConfigEntry<bool> AddSectionNote(string sectionText, string description = null,
 			IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, bool isAdvanced = false) {
 
-			//HACK Global 4 - Even though this string looks empty, there is a zero-width space character in it so Bepinex doesnt
-			//whine about it having whitespace text. If they add a check for it in the future, this would fail.
+			//HACK Global 4 - Even though this key string looks empty, there is a zero-width space character
+			//	in it so Bepinex doesnt whine about it having whitespace text. If they add a check for it in
+			//	the future, this would fail.
+			//TODO Global 5 - I cant add more than one section note within the same section, or the key/section
+			//	combination would be duplicated. Warn if it happens by checking it beforehand.
 			string key = "​";
 
-			return AddConfig(sectionText, key, true, description, patchInstanceDependency, hidden, isAdvanced: isAdvanced,
-				disabled: true, hideDefaultButton: true, acceptableVal: null, skipSectionIncrease: true);
+			ConfigEntryBasePatch.AddNote(key);
+
+			return AddConfig(sectionText, key, true, description, patchInstanceDependency, MultiplayerModInstallSide.Unspecified, hidden, 
+				isAdvanced: isAdvanced, disabled: true, hideDefaultButton: true, acceptableVal: null, skipSectionIncrease: true);
 		}
 
 		/// <summary>
-		/// This is just a read-only setting with a textbox that shows the message. The closest
-		/// thing I ve found to show a note without patching ConfigurationManager code.
+		/// Creates a read-only setting with a textbox that shows the message.
 		/// The format is as follows in the config file:
-		/// 
+		/// <code>
 		/// [{sectionName}]
+		/// 
 		/// ## {description}
-		/// # Setting type: String
-		/// # Default value: {textboxMessage}
 		/// {key} = {textboxMessage}
+		/// </code>
 		/// </summary>
 		public ConfigEntry<string> AddQuasiNote(string sectionName, string key, string textboxMessage,
 				string description = null, IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, bool isAdvanced = false) {
 			return AddQuasiNote(sectionName, key, textboxMessage, description, patchInstanceDependency, hidden, isAdvanced, skipSectionIncrease: false);
 		}
 
-		/// <summary>AddQuasiNote
+		/// <summary>
 		/// This is a read-only setting that only shows in the config file and not on ConfigurationManager.
 		/// The format is as follows in the file:
-		/// 
+		/// <code>
 		/// [{sectionName}]
+		/// 
 		/// ## {description}
-		/// # Setting type: String
-		/// # Default value:
 		/// {key} = 
+		/// </code>
 		/// </summary>
 		public ConfigEntry<string> AddGUIHiddenNote(string sectionName, string key,
 				string description = null, IConfigPatchDependence patchInstanceDependency = null, bool isAdvanced = false) {
@@ -134,7 +180,7 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 		}
 
 		/// <param name="skipSectionIncrease">
-		/// If the note is meant to always be hidden, and its hidden attribute will never change in the future.
+		/// When the note is meant to always be hidden so its hidden attribute will never change in the future.
 		/// This is intended to be used for notes exclusively used for showing in the config file, and not in ConfigurationManager.
 		/// It will skip assigning a category number to this section, which means it wont "use up" a number section counter,
 		/// so it doesnt look visually as if a section is missing.
@@ -142,55 +188,58 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 		/// would take section 02, and the previous section 02 would become 03. This doesnt happen if skipSectionIncrease is true.
 		/// </param>
 		private ConfigEntry<string> AddQuasiNote(string sectionName, string key, string textboxMessage,
-				string description = null, IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, bool isAdvanced = false, bool skipSectionIncrease = false) {
+				string description = null, IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, 
+				bool isAdvanced = false, bool skipSectionIncrease = false) {
 			if (textboxMessage == null) {
 				textboxMessage = "";    //If the default value is null, it outputs the key text twice
 			}
-			return AddConfig(sectionName, key, textboxMessage, description, patchInstanceDependency, hidden, isAdvanced: isAdvanced,
-				disabled: true, hideDefaultButton: true, acceptableVal: null, skipSectionIncrease: skipSectionIncrease);
+			ConfigEntryBasePatch.AddNote(key);
+
+			return AddConfig(sectionName, key, textboxMessage, description, patchInstanceDependency, MultiplayerModInstallSide.Unspecified, 
+				hidden, isAdvanced: isAdvanced, disabled: true, hideDefaultButton: true, acceptableVal: null, skipSectionIncrease: skipSectionIncrease);
 		}
 
 
-		/// <typeparam name="T">
-		/// By default it can be any of the types supported in <see cref="TomlTypeConverter"/>,
-		/// but new ones can be added with <see cref="TomlTypeConverter.AddConverter(Type, TypeConverter)"/>
-		/// so its better to check <see cref="TomlTypeConverter.GetSupportedTypes"/> at runtime.
-		/// </typeparam>
-		/// <param name="patchInstanceDependency">
-		/// Specifies a dependency for this setting. The setting will be hidden until the instance has been successfully patched and is active.
-		/// </param>
 		public ConfigEntry<T> AddConfig<T>(string sectionName, string key, T defaultValue, string description = null,
-				IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, bool disabled = false, bool hideDefaultButton = false, bool isAdvanced = false) {
-			return AddConfig(sectionName, key, defaultValue, description, patchInstanceDependency, hidden, disabled, null, false, hideDefaultButton, isAdvanced);
+				IConfigPatchDependence patchInstanceDependency = null, MultiplayerModInstallSide modInstallSide = MultiplayerModInstallSide.Unspecified, 
+				bool hidden = false, bool disabled = false, bool hideDefaultButton = false, bool isAdvanced = false) {
+			return AddConfig(sectionName, key, defaultValue, description, patchInstanceDependency, modInstallSide, hidden, disabled, null, false, hideDefaultButton, isAdvanced);
 		}
 
 		public ConfigEntry<T> AddConfigWithAcceptableValues<T>(string sectionName, string key, T defaultValue, string description = null,
-				IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, bool disabled = false, AcceptableValueList<T> acceptableValueList = null,
-				bool hideDefaultButton = false, bool isAdvanced = false)
+				IConfigPatchDependence patchInstanceDependency = null, MultiplayerModInstallSide modInstallSide = MultiplayerModInstallSide.Unspecified, 
+				bool hidden = false, bool disabled = false, AcceptableValueList<T> acceptableValueList = null, bool hideDefaultButton = false, bool isAdvanced = false)
 			where T : IEquatable<T> {
 
-			return AddConfig(sectionName, key, defaultValue, description, patchInstanceDependency, hidden, disabled, acceptableVal: acceptableValueList, false, hideDefaultButton, isAdvanced);
+			return AddConfig(sectionName, key, defaultValue, description, patchInstanceDependency, modInstallSide, hidden, disabled, acceptableVal: acceptableValueList, false, hideDefaultButton, isAdvanced);
 		}
 
 		public ConfigEntry<T> AddConfigWithAcceptableValues<T>(string sectionName, string key, T defaultValue, string description = null,
-				IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, bool disabled = false, AcceptableValueRange<T> acceptableValueRange = null,
+				IConfigPatchDependence patchInstanceDependency = null, MultiplayerModInstallSide modInstallSide = MultiplayerModInstallSide.Unspecified, 
+				bool hidden = false, bool disabled = false, AcceptableValueRange<T> acceptableValueRange = null,
 				bool showRangeAsPercent = false, bool hideDefaultButton = false, bool isAdvanced = false)
 			where T : IComparable {
 
-			return AddConfig(sectionName, key, defaultValue, description, patchInstanceDependency, hidden, disabled, acceptableVal: acceptableValueRange, showRangeAsPercent, hideDefaultButton, isAdvanced);
+			return AddConfig(sectionName, key, defaultValue, description, patchInstanceDependency, modInstallSide, hidden, disabled, acceptableVal: acceptableValueRange, showRangeAsPercent, hideDefaultButton, isAdvanced);
 		}
 
-		private ConfigEntry<T> AddConfig<T>(string sectionName, string key, T defaultValue, string description = null, IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, bool disabled = false,
-				AcceptableValueBase acceptableVal = null, bool showRangeAsPercent = false, bool hideDefaultButton = false, bool isAdvanced = false, bool skipSectionIncrease = false) {
+		private ConfigEntry<T> AddConfig<T>(string sectionName, string key, T defaultValue, string description = null, 
+				IConfigPatchDependence patchInstanceDependency = null, MultiplayerModInstallSide modInstallSide = MultiplayerModInstallSide.Unspecified, 
+				bool hidden = false, bool disabled = false, AcceptableValueBase acceptableVal = null, bool showRangeAsPercent = false, 
+				bool hideDefaultButton = false, bool isAdvanced = false, bool skipSectionIncrease = false) {
 			SetSection(sectionName, skipSectionIncrease);
 
-			return AddConfig(key, defaultValue, description, patchInstanceDependency, hidden, disabled, acceptableVal, showRangeAsPercent, hideDefaultButton, isAdvanced);
+			return AddConfig(key, defaultValue, description, patchInstanceDependency, modInstallSide, hidden, disabled, acceptableVal, showRangeAsPercent, hideDefaultButton, isAdvanced);
 		}
 
 		/// <summary>
 		/// 
 		/// </summary>
-		/// <typeparam name="T"></typeparam>
+		/// <typeparam name="T">
+		/// By default it can be any of the types supported in <see cref="TomlTypeConverter"/>,
+		/// but new ones can be added with <see cref="TomlTypeConverter.AddConverter(Type, TypeConverter)"/>
+		/// so its better to check <see cref="TomlTypeConverter.GetSupportedTypes"/> at runtime.
+		/// </typeparam>
 		/// <param name="key">
 		/// Text with a short description of the function for this setting.
 		/// </param>
@@ -206,22 +255,37 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 		/// Makes a setting dependent on a patch instance being active. Settings using this functionality are set to hidden, and when
 		/// this Instance patching attempt is completed and the patch is successfully active, the setting is shown.
 		/// </param>
+		/// <param name="modInstallSide">
+		/// For a multiplayer game, this var specifies for the user if this mod has to be installed
+		/// only on the host, the client, or both, by adding text at the end of the description.
+		/// </param>
 		/// <param name="hidden">Hides the setting from view. This doesnt affect the config file.</param>
 		/// <param name="disabled">Sets the setting so its value cant be changed. This doesnt affect the config file.</param>
 		/// <param name="acceptableVal">Acceptable values that the setting can have.</param>
 		/// <param name="showRangeAsPercent">Shows the range of acceptable values as a percent. Basically it adds a % after the value.</param>
 		/// <param name="hideDefaultButton">Hides the button to reset the setting to default values.</param>
 		/// <param name="isAdvanced">Flags the setting as advanced, so it will only be shown if the "Advanced" checkbox option is enabled.</param>
-		private ConfigEntry<T> AddConfig<T>(string key, T defaultValue, string description = null, IConfigPatchDependence patchInstanceDependency = null, bool hidden = false, bool disabled = false,
+		private ConfigEntry<T> AddConfig<T>(string key, T defaultValue, string description = null, IConfigPatchDependence patchInstanceDependency = null, MultiplayerModInstallSide modInstallSide = MultiplayerModInstallSide.Unspecified, bool hidden = false, bool disabled = false,
 				AcceptableValueBase acceptableVal = null, bool showRangeAsPercent = false, bool hideDefaultButton = false, bool isAdvanced = false) {
 
-			//ConfigDescription through an error if description is null, even though description is explicitly allowed to be null deeper into the code.
+			//ConfigDescription throws an error if description is null, even though
+			//	description is explicitly allowed to be null deeper in the code.
 			if (description == null) {
 				description = "";
 			}
 
 			if (patchInstanceDependency != null) {
-				hidden = true;  //If it depends on a patch, hide by default so the patch unhides it later on in its own event.
+				//Hide by default so the depending patch automatically shows it later on, in its own event.
+				hidden = true;
+			}
+
+			if (modInstallSide != MultiplayerModInstallSide.Unspecified) {
+				string modInstallDescrip = GetDescriptionFromInstallSide(modInstallSide);
+				if (!description.IsNullOrWhiteSpace()) {
+					description += "\n\n";
+				}
+
+				description += modInstallDescrip;
 			}
 
 			ConfigDescription configDesc = new ConfigDescription(description, acceptableVal,
@@ -235,27 +299,62 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 					HideDefaultButton = hideDefaultButton,
 					Category = $"{currentSectionOrder.ToString("D2")}. {currentSectionName}"  //Force minimum of 2 digits, so it starts from "01".
 				});
-
+			
 			ConfigEntry<T> configEntry = configFile.Bind(currentSectionName, key, defaultValue, configDesc);
 
 			if (patchInstanceDependency != null) {
-				patchInstanceDependency.SetSettingPatchDependence(this, configEntry);
+				patchInstanceDependency.SetSettingPatchDependence(configEntry);
 			}
 
 			return configEntry;
 		}
 
-		/// <summary>
-		/// Sets the value of any of the config attributes present in <see cref="ConfigManagerController"/>
-		/// </summary>
-		/// <typeparam name="T1">Type of the config value.</typeparam>
-		/// <typeparam name="T2">Type of the attribute value.</typeparam>
-		/// <param name="configEntry">A config entry added previously.</param>
-		/// <param name="configAttribute">The type of attribute to change.</param>
-		/// <param name="attrValue">The value of the attribute.</param>
-		/// <returns>True if the attribute was set successfully</returns>
-		public bool SetConfigAttribute<T1, T2>(ConfigEntry<T1> configEntry, ConfigurationManagerAttributes.ConfigAttributes configAttribute, T2 attrValue) {
-			return SetConfigAttribute<T1, T2>(configEntry.Definition.Section, configEntry.Definition.Key, configAttribute, attrValue);
+		public bool Remove(string section, string key) {
+			return configFile.Remove(new ConfigDefinition(section, key));
+		}
+
+		public bool Remove(ConfigDefinition key) {
+			return configFile.Remove(key);
+		}
+
+		public void ClearAllConfigs() {
+			configFile.Clear();
+		}
+
+		public int Count() => configFile.Count;
+
+		/*	Test to use icons instead of descriptions, with a Legend. Seems like bepinex does not use
+			the UTF encoding needed for any of these, and they dont show correctly in the config file.
+
+		    💻⌨☁👑⚡⚪⚫⛔❌✅
+			MultiplayerModInstallSide.Any =>					✅
+			MultiplayerModInstallSide.HostSideOnly =>			👑
+			MultiplayerModInstallSide.HostAndOptionalClient =>	👑⌨⚪
+			MultiplayerModInstallSide.HostAndSoftClient =>		👑⌨⚫
+			MultiplayerModInstallSide.HostAndHardClient =>		👑⌨⚡
+			
+			Maybe with letters?
+			MultiplayerModInstallSide.Any =>					H/C		Host/Client
+			MultiplayerModInstallSide.HostSideOnly =>			H		Host
+			MultiplayerModInstallSide.HostAndOptionalClient =>	HCO		HostClientOptional
+			MultiplayerModInstallSide.HostAndSoftClient =>		HCS		HostClientShould
+			MultiplayerModInstallSide.HostAndHardClient =>		HCR		HostClientRequired
+		 */
+		private string GetDescriptionFromInstallSide(MultiplayerModInstallSide modInstallSide) {
+			return InstallSideInitialDescription +
+				modInstallSide switch {
+					MultiplayerModInstallSide.Any =>
+						"is installed for the player/s that wants its functionality, hosting or not.",
+					MultiplayerModInstallSide.HostSideOnly =>
+						"is installed in the host. It is not needed in the client.",
+					MultiplayerModInstallSide.HostAndOptionalClient =>
+						"is installed in the host. Clients can also install it.",
+					MultiplayerModInstallSide.HostAndSoftClient =>
+						"is installed in the host, and should be installed in the clients.",
+					MultiplayerModInstallSide.HostAndHardClient =>
+						"is installed in both the host and the clients.",
+					_ => ""
+				};
 		}
 
 		/// <summary>
@@ -269,7 +368,42 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 		/// <param name="attrValue">The value of the attribute.</param>
 		/// <returns>True if the attribute was set successfully</returns>
 		public bool SetConfigAttribute<T1, T2>(string section, string key, ConfigurationManagerAttributes.ConfigAttributes configAttribute, T2 attrValue) {
-			FieldInfo fieldInfoAttribute = GetConfigAttributeFieldInfo<T1>(section, key, configAttribute, out ConfigurationManagerAttributes configManagerAttribInstance);
+			ConfigEntry<T2> configEntry = GetConfigEntry<T2>(section, key);
+
+			return configEntry.SetConfigAttribute(configAttribute, attrValue);
+		}
+
+		public R GetConfigAttribute<T, R>(string section, string key, 
+				ConfigurationManagerAttributes.ConfigAttributes configAttribute) {
+
+			ConfigEntry<T> configEntry = GetConfigEntry<T>(section, key);
+			return configEntry.GetConfigAttribute<T, R>(configAttribute);
+		}
+
+		private ConfigEntry<T> GetConfigEntry<T>(string section, string key) {
+			bool exists = configFile.TryGetEntry(new ConfigDefinition(section, key), out ConfigEntry<T> configEntry);
+			if (!exists || configEntry.Description == null || configEntry.Description.Tags == null) {
+				throw new InvalidOperationException($"The config entry with section \"{section}\" and key \"{key}\" could not be found.");
+			}
+
+			return configEntry;
+		}
+
+	}
+
+	public static class ConfigManagerExtension {
+
+		/// <summary>
+		/// Sets the value of any of the config attributes present in <see cref="ConfigManagerController"/>
+		/// </summary>
+		/// <typeparam name="T1">Type of the config value.</typeparam>
+		/// <typeparam name="T2">Type of the attribute value.</typeparam>
+		/// <param name="configEntry">A config entry added previously.</param>
+		/// <param name="configAttribute">The type of attribute to change.</param>
+		/// <param name="attrValue">The value of the attribute.</param>
+		/// <returns>True if the attribute was set successfully</returns>
+		public static bool SetConfigAttribute<T1, T2>(this ConfigEntry<T1> configEntry, ConfigurationManagerAttributes.ConfigAttributes configAttribute, T2 attrValue) {
+			FieldInfo fieldInfoAttribute = GetConfigAttributeFieldInfo(configEntry, configAttribute, out ConfigurationManagerAttributes configManagerAttribInstance);
 
 			if (fieldInfoAttribute == null) {
 				return false;
@@ -280,32 +414,28 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 			return true;
 		}
 
-		public R GetConfigAttribute<T, R>(ConfigEntry<T> configEntry, ConfigurationManagerAttributes.ConfigAttributes configAttribute) {
-			return GetConfigAttribute<T, R>(configEntry.Definition.Section, configEntry.Definition.Key, configAttribute);
-		}
-
-		public R GetConfigAttribute<T, R>(string section, string key, ConfigurationManagerAttributes.ConfigAttributes configAttribute) {
-			FieldInfo fieldInfoAttribute = GetConfigAttributeFieldInfo<T>(section, key, configAttribute, out ConfigurationManagerAttributes configManagerAttribInstance);
+		public static R GetConfigAttribute<T, R>(this ConfigEntry<T> configEntry, ConfigurationManagerAttributes.ConfigAttributes configAttribute) {
+			FieldInfo fieldInfoAttribute = GetConfigAttributeFieldInfo(configEntry, configAttribute, 
+				out ConfigurationManagerAttributes configManagerAttribInstance);
 
 			if (fieldInfoAttribute == null) {
 				throw new InvalidOperationException($"The attribute \"{configAttribute.ToString()}\" could not be found.");
 			}
 
 			object value = fieldInfoAttribute.GetValue(configManagerAttribInstance);
-			if (value != null && !(value is R)) {
-				throw new InvalidOperationException($"The attribute value is of type \"{value.GetType().FullName}\" and is not compatible with the type \"{typeof(R).FullName}\" passed by parameter.");
+			if (value != null && value is not R) {
+				throw new InvalidOperationException($"The attribute value is of type \"{value.GetType().FullName}\" " +
+					$"and is not compatible with the type \"{typeof(R).FullName}\" passed by parameter.");
 			}
 
 			return (R)value;
 		}
 
-		private FieldInfo GetConfigAttributeFieldInfo<T>(string section, string key, ConfigurationManagerAttributes.ConfigAttributes configAttribute, out ConfigurationManagerAttributes configManagerAttribInstance) {
-			configManagerAttribInstance = null;
+		private static FieldInfo GetConfigAttributeFieldInfo<T>(ConfigEntry<T> configEntry,
+				ConfigurationManagerAttributes.ConfigAttributes configAttribute,
+				out ConfigurationManagerAttributes configManagerAttribInstance) {
 
-			bool exists = configFile.TryGetEntry(new ConfigDefinition(section, key), out ConfigEntry<T> configEntry);
-			if (!exists || configEntry.Description == null || configEntry.Description.Tags == null) {
-				return null;
-			}
+			configManagerAttribInstance = null;
 
 			//Should be in the 1º index, but search though all tags just in case.
 			foreach (object tag in configEntry.Description.Tags) {
@@ -314,11 +444,9 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 					break;
 				}
 			}
-
 			if (configManagerAttribInstance == null) {
 				return null;
 			}
-
 
 			FieldInfo fieldInfoAttribute = AccessTools.Field(typeof(ConfigurationManagerAttributes), configAttribute.ToString());
 			if (fieldInfoAttribute == null) {

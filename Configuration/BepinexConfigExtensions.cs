@@ -29,4 +29,5 @@ namespace Damntry.UtilsBepInEx.Configuration {
 		}
 
 	}
+
 }
