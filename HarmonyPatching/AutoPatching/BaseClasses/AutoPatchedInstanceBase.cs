@@ -1,11 +1,11 @@
 ﻿using System;
-using BepInEx.Configuration;
-using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces;
-using static Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.AutoPatcher;
 using System.Collections.Generic;
 using System.Reflection;
-using Damntry.UtilsBepInEx.Configuration.ConfigurationManager.SettingAttributes;
+using BepInEx.Configuration;
 using Damntry.UtilsBepInEx.Configuration.ConfigurationManager;
+using Damntry.UtilsBepInEx.Configuration.ConfigurationManager.SettingAttributes;
+using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces;
+using static Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.AutoPatcher;
 
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses {
@@ -67,8 +67,19 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses {
 		public abstract event Action<bool> OnPatchFinished;
 
 
-		public abstract List<MethodInfo> PatchInstance();
-		public abstract void UnpatchInstance();
+		public List<MethodInfo> PatchInstance() {
+			return harmonyPatchInstance.Value.PatchInstance();
+		}
+
+		public void UnpatchInstance() {
+			harmonyPatchInstance.Value.UnpatchInstance();
+		}
+
+		public int GetPatchedCount() {
+			return harmonyPatchInstance.Value.GetPatchedCount();
+		}
+		
+
 
 		public abstract void RaiseEventOnAutoPatchFinish(AutoPatchResult autoPatchResult);
 
@@ -78,11 +89,10 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses {
 		/// this Instance patching attempt is completed, the setting is shown only in ConfigurationManager if the patch was successful and currently active.
 		/// </summary>
 		/// <typeparam name="T"></typeparam>
-		/// <param name="configManagerControl"></param>
 		/// <param name="configEntry">The ConfigEntry<typeparamref name="T"/> settings that depends on the patchInstance.</param>
-		public void SetSettingPatchDependence<U>(ConfigManagerController configManagerControl, ConfigEntry<U> configEntry) {
+		public void SetSettingPatchDependence<U>(ConfigEntry<U> configEntry) {
 			OnPatchFinished += (IsPatchActive) => {
-				configManagerControl.SetConfigAttribute(configEntry, ConfigurationManagerAttributes.ConfigAttributes.Browsable, IsPatchActive);
+				configEntry.SetConfigAttribute(ConfigurationManagerAttributes.ConfigAttributes.Browsable, IsPatchActive);
 			};
 		}
 

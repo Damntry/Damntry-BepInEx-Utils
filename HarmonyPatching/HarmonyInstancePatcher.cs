@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Damntry.Utils.ExtensionMethods;
 using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Attributes;
@@ -39,6 +40,10 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 
 		public void UnpatchInstance() {
 			harmonyPatch.Value.UnpatchSelf();
+		}
+
+		public int GetPatchedCount() {
+			return harmonyPatch.Value.GetPatchedMethods().Count();
 		}
 
 		private List<MethodInfo> StartRecursivePatching(Harmony harmonyPatch) {

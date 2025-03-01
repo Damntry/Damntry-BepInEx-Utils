@@ -1,15 +1,12 @@
-﻿using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses.Inheritable;
+﻿namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces {
 
-namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces
-{
-
-    /// <summary>
-    /// Defines a patch that can automatically patch itself with little manual intervention.
-    /// NOTE: To use auto patching, the patch class must inherit <see cref="HybridPatchedInstance{T}"/> or 
-    /// <see cref="FullyAutoPatchedInstance{T}"/>, which implements this interface.
-    /// Then call <see cref="AutoPatcher.StartAutoPatcher(...)"/> to start the patching process.
-    /// </summary>
-    public interface IAutoPatchSupport : ISelfPatch {
+	/// <summary>
+	/// Defines a patch that can automatically patch itself with little manual intervention.
+	/// NOTE: To use auto patching, the patch class must inherit <see cref="HybridPatchedInstance{T}"/> or 
+	/// <see cref="FullyAutoPatchedInstance{T}"/>, which implements this interface.
+	/// Then call <see cref="AutoPatcher.StartAutoPatcher(...)"/> to start the patching process.
+	/// </summary>
+	public interface IAutoPatchSupport : ISelfPatch {
 
 		/// <summary>Indicates if the auto patcher will try and patch this class instance. Otherwise it is skipped.</summary>
 		bool IsAutoPatchEnabled { get; }

@@ -1,6 +1,6 @@
 ﻿using System;
-using BepInExLog = BepInEx.Logging;
 using Damntry.Utils.Logging;
+using BepInExLog = BepInEx.Logging;
 
 namespace Damntry.UtilsBepInEx.Logging {
 
@@ -22,11 +22,11 @@ namespace Damntry.UtilsBepInEx.Logging {
 		}
 
 
-		protected override void LogMessage(string message, TimeLogger.LogTier logLevel) {
+		protected override void LogMessage(string message, LogTier logLevel) {
 			bepinexLogger.Log(convertLogLevel(logLevel), message);
 		}
 
-		private BepInExLog.LogLevel convertLogLevel(TimeLogger.LogTier logLevel) {
+		private BepInExLog.LogLevel convertLogLevel(LogTier logLevel) {
 			//All enum bits are the same except "All"
 			if (logLevel == LogTier.All) {
 				return BepInExLog.LogLevel.All;

@@ -12,8 +12,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 	/// <summary>
 	/// Provides functionality to start and manage the auto patching process, with exception control and logging.
 	/// </summary>
-	public class AutoPatcher {
-
+	public static class AutoPatcher {
 
 		public enum AutoPatchResult {
 			none,
@@ -29,7 +28,9 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 		//			its own stable thing.
 		//		- Modify namespace to add version (For example: Damntry.UtilsBepInEx.0_X.Patching.AutoPatching).
 		//			I would need to keep copies of versions directly referenced by any project, in case newer ones are not compatible
-		//			(I should probably be doing this anyway). 
+		//			(I should probably be doing this anyway).
+		//	Bepinex kind of takes care of it and outputs the error:
+		//		Skipping [SuperQoLity 0.5.8] because a newer version exists (SuperQoLity 0.7.8)
 
 
 		//	TODO Global 6 - Related to the above of duplicated dlls, my assembly logic is all over the place since I dont even know what Im going to do.
@@ -55,6 +56,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 		public static bool StartAutoPatcher() {
 			int patchErrorCount = 0;
 			int patchDisabledCount = 0;
+			int patchEnabledCount = 0;
 
 			AutoPatchResult result;
 			
@@ -64,18 +66,21 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 
 				if (result == AutoPatchResult.disabled) {
 					patchDisabledCount++;
-				} else if (result == AutoPatchResult.error) {
-					patchErrorCount++;
+				} else {
+					patchEnabledCount++;
+					if (result == AutoPatchResult.error) {
+						patchErrorCount++;
+					}
 				}
 			}
 
 			if (patchErrorCount == 0) {
-				TimeLogger.Logger.LogTimeInfo($"All Auto-Patches applied successfully.", TimeLogger.LogCategories.Loading);
+				TimeLogger.Logger.LogTimeInfo($"All {patchEnabledCount} auto-patches applied successfully.", LogCategories.Loading);
 
 				return true;
 			} else {
-				TimeLogger.Logger.LogTimeFatal($"Oh oh, {patchErrorCount} out of {AutoPatchContainer.GetRegisteredAutoPatches().Count() - patchDisabledCount} patches failed. " +
-					$"Check above for errors.", TimeLogger.LogCategories.Loading);
+				TimeLogger.Logger.LogTimeFatal($"Oh oh, {patchErrorCount} out of {patchEnabledCount} auto-patches failed. " +
+					$"Check above for errors.", LogCategories.Loading);
 
 				return false;
 			}
@@ -98,17 +103,16 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 				}
 
 			} catch (Exception ex) {
-				TimeLogger.Logger.LogTimeExceptionWithMessage($"Error auto patching class {autoPatchType.FullName}.", ex, TimeLogger.LogCategories.Loading);
-				//Show custom message in game.
+				result = AutoPatchResult.error;
+				TimeLogger.Logger.LogTimeExceptionWithMessage($"Error auto patching class {autoPatchType.FullName}.", ex, LogCategories.Loading);
+				//Log patch custom error message
 				if (autoPatchInstance != null) {
-					TimeLogger.Logger.LogTimeErrorShowInGame(autoPatchInstance.ErrorMessageOnAutoPatchFail, TimeLogger.LogCategories.AutoPatch);
+					TimeLogger.Logger.LogTimeError(autoPatchInstance.ErrorMessageOnAutoPatchFail, LogCategories.AutoPatch);
 
-					if (autoPatchInstance.IsRollbackOnAutoPatchFail == true) {
+					if (autoPatchInstance.IsRollbackOnAutoPatchFail == true && autoPatchInstance.GetPatchedCount() > 0) {
 						autoPatchInstance.UnpatchInstance();
 					}
 				}
-				
-				result = AutoPatchResult.error;
 			} finally {
 				autoPatchInstance?.RaiseEventOnAutoPatchFinish(result);
 			}
@@ -133,7 +137,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 				autoPatchedInstanceBases.Cast<AutoPatchedInstanceBase>().(item);
 			}
 
-			TimeLogger.Logger.LogTimeExceptionWithMessage("", ex, TimeLogger.LogCategories.AutoPatch);
+			TimeLogger.Logger.LogTimeExceptionWithMessage("", ex, LogCategories.AutoPatch);
 			return autoPatchedInstanceBases;
 
 			return (IEnumerable<AutoPatchedInstanceBase>)assembly.GetTypes().Where

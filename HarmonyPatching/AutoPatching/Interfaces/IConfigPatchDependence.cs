@@ -11,7 +11,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces {
 	/// </summary>
 	public interface IConfigPatchDependence {
 
-		void SetSettingPatchDependence<T>(ConfigManagerController configManagerControl, ConfigEntry<T> configEntry);
+		void SetSettingPatchDependence<T>(ConfigEntry<T> configEntry);
 
 	}
 }

@@ -5,7 +5,7 @@ using HarmonyLib;
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.Helpers {
 
-	//2 - TODO I could make this a Singleton and, instead of using a dictionary to save the args and then having 
+	//TODO Global 5 - I could make this a Singleton and, instead of using a dictionary to save the args and then having 
 	//	to refer the argument you want with a constant or something like that, see if I can use templating
 	//	to add new attributes right here in this class. Maybe there is a way of having a cs class with snippets of
 	//	templating? Otherwise make this class abstract, and a new template file will set a new class to derive it

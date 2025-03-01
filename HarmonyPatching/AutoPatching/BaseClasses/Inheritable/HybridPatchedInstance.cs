@@ -36,14 +36,6 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses.Inherita
 		public override void RaiseEventOnAutoPatchFinish(AutoPatchResult autoPatchResult) { }
 
 
-		public override List<MethodInfo> PatchInstance() {
-			return harmonyPatchInstance.Value.PatchInstance();
-		}
-
-		public override void UnpatchInstance() {
-			harmonyPatchInstance.Value.UnpatchInstance();
-		}
-
 		public List<MethodInfo> PatchClassByType(Type classType) {
 			return harmonyPatchInstance.Value.PatchClassByType(classType);
 		}

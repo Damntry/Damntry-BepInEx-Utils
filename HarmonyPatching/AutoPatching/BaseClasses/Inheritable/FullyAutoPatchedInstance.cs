@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Reflection;
 using static Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.AutoPatcher;
 
 
@@ -47,24 +45,16 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses.Inherita
 		public virtual void OnPatchFinishedVirtual(bool IsActive) { }
 
 
-		public override List<MethodInfo> PatchInstance() {
-			return harmonyPatchInstance.Value.PatchInstance();
-		}
-
-		public override void UnpatchInstance() {
-			harmonyPatchInstance.Value.UnpatchInstance();
-		}
-
 
 		public override void RaiseEventOnAutoPatchFinish(AutoPatchResult autoPatchResult) {
 			AutoPatchResultEvent(autoPatchResult);
 
-			OnPatchFinishedVirtual(IsPatchActive);
-
-			//Raise event for all subscribers
+			//Raise generic event for all subscribers
 			if (OnPatchFinished != null) {
 				OnPatchFinished(IsPatchActive);
 			}
+
+			OnPatchFinishedVirtual(IsPatchActive);
 		}
 
 	}
