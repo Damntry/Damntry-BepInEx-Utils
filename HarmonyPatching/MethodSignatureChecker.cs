@@ -1,17 +1,15 @@
 ﻿using System;
-using System.Text;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Damntry.Utils.Reflection;
+using System.Text;
 using Damntry.Utils.Logging;
-using Damntry.UtilsBepInEx.HarmonyPatching.Exceptions;
+using Damntry.Utils.Reflection;
 using HarmonyLib;
-using MonoMod.Utils;
 using Mono.Cecil;
-using Mono.Collections.Generic;
 using Mono.Cecil.Cil;
+using Mono.Collections.Generic;
 using Newtonsoft.Json;
 using static Damntry.UtilsBepInEx.HarmonyPatching.CheckResult;
 
@@ -24,10 +22,11 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 	/// </summary>
 	public class MethodSignatureChecker {
 
-		//TODO Global 7 - When a different signature is found, instead of not overwriting the signature file, write a
-		//		new dated file with the errors, and every launch check if its there to show the error again to remind
-		//		me, with the date of failure.
-		//		This way we have the detail of having progressive changes detected, dates and what not that I could customize.
+		//TODO Global 3 - When different signatures are found, write a new dated file with the errors,
+		//		overwrite the signature file, and every launch show all those error files.
+		//		This way we have the detail of having progressive changes detected, dates and what not.
+		//		The error file will have a field like "handled == false", and I would manually make it true
+		//		so it stops showing. Eventually I will do something to automate it.
 
 		//TODO Global 6 - Implement a way to ignore specific methods. Either an attribute or through parameters or both.
 
@@ -36,7 +35,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		/// </summary>
 		public CheckResult LastCheckResult { get; private set; }
 
-		private Dictionary<string, MethodSignature> currentMethodSignatures;
+		private List<MethodInfoData> listMethodInfoData;
 
 		private Dictionary<string, MethodSignature> previousMethodSignatures;
 
@@ -56,7 +55,6 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		/// </param>
 		public MethodSignatureChecker(Type pluginType) {
 			this.pluginType = pluginType;
-			currentMethodSignatures = new Dictionary<string, MethodSignature>();
 			LastCheckResult = new CheckResult();
 
 			string pathFolderSignatures = AssemblyUtils.GetCombinedPathFromAssemblyFolder(pluginType, nameof(MethodSignatureChecker));
@@ -66,6 +64,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 			}
 
 			pathFileMethodSignatures = pathFolderSignatures + Path.DirectorySeparatorChar + "methodsignatures.json";
+			listMethodInfoData = new();
 		}
 
 		/// <summary>
@@ -89,9 +88,53 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		/// harmony patches that exist in the assembly passed to the constructor.
 		/// </summary>
 		public void PopulateMethodSignaturesFromHarmonyPatches() {
-			foreach (var targetMethodInfo in GetAllPatchMethodTargets(pluginType)) {
-				AddMethodSignature(targetMethodInfo);
+			foreach (var (methodInfo, harmonyMethod) in HarmonyMonoMethods.GetAllPatchMethodTargets(pluginType, true)) {
+				//targetMethodInfo.mInfo can be null if the method doesnt exist anymore. We keep
+				//		all values used so later we have enough info to be notified about it.
+				AddMethod(
+					methodInfo,
+					harmonyMethod.declaringType,
+					harmonyMethod.methodName,
+					harmonyMethod.argumentTypes);
 			}
+		}
+
+		/// <summary>
+		/// Adds a new method signature to later check if a previous one exist of the same method to compare against.
+		/// Requires string data from the method in case the methodInfo is null (when the method stops existing)
+		/// so we can name the missing function.
+		/// </summary>
+		/// <param name="methodInfo">The MethodInfo.</param>
+		/// <param name="declaredTypeName">The name of the declaring type where the method resides.</param>
+		/// <param name="methodName">Name of the method.</param>
+		/// <param name="typeParameterNames">
+		/// Optional parameter names to target a specific overload of the method.
+		/// </param>
+		public void AddMethod(MethodInfo methodInfo, string declaredTypeName, string methodName,
+				string[] typeParameterNames = null) {
+
+			listMethodInfoData.Add(
+				new MethodInfoData(methodInfo, declaredTypeName, methodName, typeParameterNames)
+			);
+		}
+
+		/// <summary>
+		/// Adds a new method signature to later check if a previous one exist of the same method to compare against.
+		/// Requires string data from the method in case the methodInfo is null (when the method stops existing)
+		/// so we can name the missing function.
+		/// </summary>
+		/// <param name="methodInfo">The MethodInfo.</param>
+		/// <param name="declaringType">The declaring type where the method resides.</param>
+		/// <param name="methodName">Name of the method.</param>
+		/// <param name="parameters">
+		/// Optional parameters to target a specific overload of the method.
+		/// </param>
+		public void AddMethod(MethodInfo methodInfo, Type declaringType, string methodName,
+					Type[] parameters = null) {
+
+			listMethodInfoData.Add(
+				new MethodInfoData(methodInfo, declaringType, methodName, parameters)
+			);
 		}
 
 		/// <summary>
@@ -106,10 +149,11 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		/// Must be in the format of "Namespace.Type1.TypeFind".
 		/// </param>
 		/// <param name="generics">Optional list of types that define the generic version of the method.</param>
-		public void AddMethodSignature(string fullTypeName, string methodName, string[] fullTypeParameters = null, Type[] generics = null) {
-			Type declaringType = AssemblyUtils.GetTypeFromLoadedAssemblies(fullTypeName, true);
-
-			AddMethodSignature(declaringType, methodName, fullTypeParameters, generics);
+		public void AddMethod(string fullTypeName, string methodName, 
+				string[] fullTypeParameters = null, Type[] generics = null) {
+			listMethodInfoData.Add(
+				new MethodInfoData(fullTypeName, methodName, fullTypeParameters, generics)
+			);
 		}
 
 		/// <summary>
@@ -124,10 +168,11 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		/// Must be in the format of "Namespace.Type1.TypeFind".
 		/// </param>
 		/// <param name="generics">Optional list of types that define the generic version of the method.</param>
-		public void AddMethodSignature(Type declaringType, string methodName, string[] fullTypeParameters = null, Type[] generics = null) {
-			Type[] argumentTypes = AssemblyUtils.GetTypesFromLoadedAssemblies(true, fullTypeParameters);
-
-			AddMethodSignature(declaringType, methodName, argumentTypes, generics);
+		public void AddMethod(Type declaringType, string methodName, 
+				string[] fullTypeParameters = null, Type[] generics = null) {
+			listMethodInfoData.Add(
+				new MethodInfoData(declaringType, methodName, fullTypeParameters, generics)
+			);
 		}
 
 		/// <summary>
@@ -137,8 +182,10 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		/// The declaring type where the method resides.
 		/// </param>
 		/// <param name="methodName">Name of the method.</param>
-		public void AddMethodSignature(Type declaringType, string methodName) {
-			AddMethodSignature(declaringType, methodName, parameters: null, null);
+		public void AddMethod(Type declaringType, string methodName) {
+			listMethodInfoData.Add(
+				new MethodInfoData(declaringType, methodName, parameters: null, null)
+			);
 		}
 
 		/// <summary>
@@ -152,152 +199,14 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		/// Optional parameters to target a specific overload of the method.
 		/// </param>
 		/// <param name="generics">Optional list of types that define the generic version of the method.</param>
-		public void AddMethodSignature(Type declaringType, string methodName, Type[] parameters = null, Type[] generics = null) {
-			MethodInfo methodInfo = AccessTools.Method(declaringType, methodName, parameters, generics);
-
-			if (methodInfo == null) {
-				//TODO 6 - methodInfo null could mean that the method no longer exists, and it needs to be warned properly.
-				//	Since we cant differentiate between a dev error and the method vanishing, we should not throw an 
-				//	error here (its fine in AddMethodSignature(MethodInfo methodInfo) since the caller is supposed to control
-				//	that), and instead have a way to have this possible error included when the check is started.
-				//	Make sure to note in the log that it could just be the devs fault from wrong param values.
-				return;
-			}
-
-			AddMethodSignature(methodInfo);
-		}
-
-		/// <summary>
-		/// Adds a new method signature to later check if a previous one exist of the same method to compare against.
-		/// </summary>
-		public void AddMethodSignature(MethodInfo methodInfo) {
-			if (methodInfo == null) {
-				throw new ArgumentNullException(nameof(methodInfo));
-			}
-
-			MethodDefinition methodDef = GetMethodDefinition(methodInfo);
-			if (methodDef == null) {
-				return;
-			}
-
-			MethodSignature mSig = CreateMethodSignature(methodInfo, methodDef);
-
-			string fullyQualifiedName = GetFullyQualifiedName(methodInfo);
-
-			if (!currentMethodSignatures.ContainsKey(fullyQualifiedName)) {  //There can be multiple patches targeting the same method
-				currentMethodSignatures.Add(fullyQualifiedName, mSig);
-			}
-		}
-
-		private string GetFullyQualifiedName(MethodInfo methodInfo) {
-			return methodInfo.DeclaringType.FullName + "." + methodInfo.Name;
-		}
-
-		/// <summary>
-		/// Gets a Mono.Cecil MethodDefinition from a MethodInfo.
-		/// </summary>
-		private MethodDefinition GetMethodDefinition(MethodInfo methodInfo) {
-			MethodDefinition methodDef = MethodBaseToMethodDefinition(methodInfo);
-
-			if (methodDef == null) {
-				//Try second way
-				string dllPath = AssemblyUtils.GetAssemblyDllFilePath(methodInfo.DeclaringType);
-				//TODO Global 5 - I should be caching this per dllPath
-				var assemblyDef = AssemblyDefinition.ReadAssembly(dllPath);
-				try {
-					methodDef = assemblyDef.MainModule
-						.GetType(methodInfo.DeclaringType.FullName)
-						.FindMethod(methodInfo.GetID(), false);
-				} catch (Exception ex) {
-					//TODO Global 8 - There is a case where GetType can return null. Its either when targetting a
-					//	method in a nested class, or a class that returns an IEnumerator and yields.
-					//	It matters little since its relatively specific and MethodBaseToMethodDefinition has, so
-					//	far, taken care of everything.
-					TimeLogger.Logger.LogTimeDebug(TimeLogger.FormatException(ex, "Error while trying to convert " +
-						"MethodInfo to MethodDefinition. You can safely ignore this error if you are not the dev."), 
-						TimeLogger.LogCategories.MethodChk);
-				}
-			}
-			
-			return methodDef;
-		}
-
-		public MethodDefinition MethodBaseToMethodDefinition(MethodBase method) {
-			var module = ModuleDefinition.ReadModule(new MemoryStream(File.ReadAllBytes(method.DeclaringType.Module.FullyQualifiedName)));
-			var declaring_type = (TypeDefinition)module.LookupToken(method.DeclaringType.MetadataToken);
-
-			return (MethodDefinition)declaring_type.Module.LookupToken(method.MetadataToken);
-		}
-
-		/// <summary>
-		/// Gets all static, <see cref="HarmonyAttribute"/> annotated methods from the assembly of the type passed by
-		/// parameter, and obtains the <see cref="MethodInfo"/> of the method that the annotations are targeting.
-		/// Ignores any attributes not inheriting from HarmonyPatch.
-		/// </summary>
-		/// <param name="assemblyType"></param>
-		private IEnumerable<MethodInfo> GetAllPatchMethodTargets(Type assemblyType) {
-			return Assembly.GetAssembly(assemblyType).GetTypes()
-				.SelectMany(type => type.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
-					.Where(mInfo => IsHarmonyAttribute(mInfo))
-					.Select(mInfo => GetTargetMethodFromHarmonyPatchMethod(type, mInfo)));
-		}
-
-		private bool IsHarmonyAttribute(MethodInfo methodInfo) {
-			//Hacky way to handle the case of methods patched with HarmonyPatchStringTypes,
-			//	used when a type is not loaded at compile time so it is referenced using strings.
-			//	Methods using this attribute throw an error while patching, by design, when the
-			//	type doesnt exist, and must manually handle not patching by, for example, disabling
-			//	its autopatching, or having a Prepare return false among other ways.
-			//	Since we cant cover every custom case, we simply try to access the custom
-			//	attributes of the method, and if the result is a TypeNotFoundInAssemblyException,
-			//	we skip the method.
-			IEnumerable<Attribute> attribs = null;
-			try {
-				attribs = methodInfo.GetCustomAttributes();
-			} catch (TypeNotFoundInAssemblyException) {
-				return false;
-			}
-
-			return attribs.Any(attr => attr is HarmonyAttribute);
-		}
-
-		/// <summary>
-		/// Gets the original method that the patch method is targeting for patching.
-		/// </summary>
-		/// <param name="methodClassType">The class where the method is located.</param>
-		/// <param name="methodInfo">The MethodInfo of the patch method.</param>
-		/// <returns>The MethodInfo of the method that the patch is targetting.</returns>
-		private MethodInfo GetTargetMethodFromHarmonyPatchMethod(Type methodClassType, MethodInfo methodInfo) {
-			//Get method info from the HarmonyAttributes of the method
-			var harmonyMethods = methodInfo.GetCustomAttributes(true)
-				.Where(attr => attr is HarmonyAttribute)
-				.Select(attr => ((HarmonyAttribute)attr).info);
-
-			//Merge all annotations into a single complete one.
-			HarmonyMethod harmonyMethod = HarmonyMethod.Merge(harmonyMethods.ToList());
-
-			if (harmonyMethod.method == null && harmonyMethod.declaringType == null) {
-				//Support that the containing class of the method can have the annotation
-				//	for the target type, instead of being in the method itself.
-				HarmonyMethod harmonyClassAttr = HarmonyMethod.Merge(HarmonyMethodExtensions.GetFromType(methodClassType));
-				harmonyMethod = harmonyClassAttr.Merge(harmonyMethod);
-			}
-			harmonyMethod.methodType ??= MethodType.Normal;
-
-			//Access the internal method that handles getting a methodInfo, taking into account all harmony attributes.
-			MethodInfo mInfoInternal = AccessTools.Method("HarmonyLib.PatchTools:GetOriginalMethod", [typeof(HarmonyMethod)]);
-			if (mInfoInternal != null) {
-				return (MethodInfo)mInfoInternal.Invoke(null, [harmonyMethod]);
-			} else {
-				TimeLogger.Logger.LogTimeWarning("Reflection access to \"HarmonyLib.PatchTools:GetOriginalMethod\" returned " +
-					"null. Using backup method.", TimeLogger.LogCategories.MethodChk);
-				return AccessTools.Method(harmonyMethod.declaringType, harmonyMethod.methodName, harmonyMethod.argumentTypes);
-			}
-
+		public void AddMethod(Type declaringType, string methodName, Type[] parameters = null, Type[] generics = null) {
+			listMethodInfoData.Add(
+				new MethodInfoData(declaringType, methodName, parameters, generics)
+			);
 		}
 
 		private MethodSignature CreateMethodSignature(MethodInfo methodInfo, MethodDefinition methodDef) {
-			MethodSignature mSig = new MethodSignature();
+			MethodSignature mSig = new();
 
 			//Join implicitly calls ToString() on each element.
 			mSig.Arguments = string.Join("", (object[])methodInfo.GetParameters());
@@ -315,20 +224,34 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		/// </summary>
 		/// <returns>True if no differences were detected, Otherwise false.</returns>
 		/// <exception cref="InvalidOperationException">Error if Method signatures
-		/// have not been added before using AddMethodSignature(...)</exception>
+		/// have not been added before using AddMethod(...)</exception>
 		public CheckResult StartSignatureCheck() {
 			CheckResult checkResult = new CheckResult(SignatureCheckResult.Started, "");
+
+			Dictionary<string, MethodSignature> currentMethodSignatures = new();
+
+			foreach (MethodInfoData methodInfoData in listMethodInfoData) {
+				if (GetMethodSignature(methodInfoData, out var mSigEntry)) {
+					//There can be multiple patches targeting the same method,
+					//	 so this case is allowed and we just continue.
+					if (!currentMethodSignatures.ContainsKey(mSigEntry.Key)) {
+						currentMethodSignatures.Add(mSigEntry.Key, mSigEntry.Value);
+					}
+				}
+			}
 
 			if (currentMethodSignatures?.Any() != true) {
 				return checkResult.SetValues(SignatureCheckResult.NoSignaturesAdded, "No method signature has been added. Signature comparison will be skipped.");
 			}
 
 			if (TryLoadSignaturesFromFile(checkResult)) {
-				CompareOldSignaturesAgainstNew(checkResult);
+				CompareOldSignaturesAgainstNew(checkResult, currentMethodSignatures);
 			}
 
-			if (checkResult.Result != SignatureCheckResult.SignaturesDifferent) {	//Dont save, so next launch we keep warning about different signatures.
-				SaveSignaturesToFile();
+			//Overwrite existing signatures, but only if there was no error. Otherwise we want 
+			//	next launch to keep warning about different signatures until dealt with manually.
+			if (checkResult.Result != SignatureCheckResult.SignaturesDifferent) {
+				SaveSignaturesToFile(currentMethodSignatures);
 			}
 
 			if (checkResult.Result == SignatureCheckResult.Started) {
@@ -338,6 +261,27 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 			return LastCheckResult = checkResult;
 		}
 
+		private bool GetMethodSignature(MethodInfoData methodInfoData, out KeyValuePair<string, MethodSignature> methodSigEntry) {
+			string fullMethodName = "";
+			MethodSignature mSig = null;
+
+			MethodInfo methodInfo = methodInfoData.GetMethodInfo();
+
+			if (methodInfo != null) {
+				MethodDefinition methodDef = HarmonyMonoMethods.GetMethodDefinition(methodInfo);
+				if (methodDef == null) {
+					methodSigEntry = default;
+					return false;
+				}
+
+				mSig = CreateMethodSignature(methodInfo, methodDef);
+			}
+
+			fullMethodName = methodInfoData.GetFullMethodName();
+
+			methodSigEntry = new KeyValuePair<string, MethodSignature>(fullMethodName, mSig);
+			return true;
+		}
 
 		private bool TryLoadSignaturesFromFile(CheckResult checkResult) {
 			if (!File.Exists(pathFileMethodSignatures)) {
@@ -364,12 +308,13 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 			return true;
 		}
 
-		private void SaveSignaturesToFile() {
+		private void SaveSignaturesToFile(Dictionary<string, MethodSignature> currentMethodSignatures) {
 			string jsonString = JsonConvert.SerializeObject(currentMethodSignatures, Formatting.Indented);
 			File.WriteAllText(pathFileMethodSignatures, jsonString, Encoding.Unicode);
 		}
 
-		private void CompareOldSignaturesAgainstNew(CheckResult checkResult) {
+		private void CompareOldSignaturesAgainstNew(CheckResult checkResult, 
+				Dictionary<string, MethodSignature> currentMethodSignatures) {
 			if (previousMethodSignatures?.Any() != true || currentMethodSignatures?.Any() != true) {
 				return;
 			}
@@ -378,10 +323,9 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 				if (previousMethodSignatures.TryGetValue(methodSigPair.Key, out MethodSignature mSigOld)) {
 					MethodSignature mSigNew = methodSigPair.Value;
 
-					if (!mSigOld.Equals(mSigNew, out string errorDetail)) {
+					if (mSigOld != null && !mSigOld.Equals(mSigNew, out string errorDetail)) {
 						checkResult.Result = SignatureCheckResult.SignaturesDifferent;
-						checkResult.AddErrorMessage($"The signature of the method {methodSigPair.Key} has changed " +
-							$"since last check. Detail: {errorDetail}. Make sure to check if any changes are needed locally.");
+						checkResult.AddErrorMessage($"{errorDetail} | {methodSigPair.Key}");
 					}
 				}
 			}
@@ -415,31 +359,209 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 					IL_BodyHashcode = hash;
 				}
 			}
-			
+
 			internal bool Equals(MethodSignature other, out string errorDetail) {
 				errorDetail = null;
 
-				if (Arguments != other.Arguments) {
-					errorDetail = "Arguments are different";
-					return false;
-				}
-				if (ReturnType != other.ReturnType) {
-					errorDetail = "Return types are different";
-					return false;
-				}
-				if (IL_BodyHashcode != other.IL_BodyHashcode) {
-					errorDetail = "IL body hashcode of the method is different";
-					return false;
+				if (other == null) {
+					errorDetail = "\tWrong method call or no longer exists.";
+				} else if (Arguments != other.Arguments) {
+					errorDetail = "\tArguments are different";
+				} else if (ReturnType != other.ReturnType) {
+					errorDetail = "\tReturn types are different";
+				} else if (IL_BodyHashcode != other.IL_BodyHashcode) {
+					errorDetail = "\tIL method body hashcode is different";
 				}
 
-				return true;
+				if (errorDetail != null) {
+					errorDetail = errorDetail.PadRight(38);   //TODO Global 7 - Autocalculate this length value.
+				}
+				
+				return errorDetail == null;
 			}
+
+		}
+
+		private readonly struct MethodInfoData {
+
+			//Flag to indicate we are using the methodInfo var, not matter if its null.
+			private readonly bool isMethodInfo;
+
+			private readonly MethodInfo methodInfo;
+
+			private readonly Type declaringType;
+			private readonly string methodName;
+			private readonly Type[] parameters;
+			private readonly Type[] generics;
+
+			private readonly string fullTypeName;
+			private readonly string[] fullTypeParameters;
+
+			private readonly FullMethodName fullMethodName;
+
+
+			public MethodInfoData(MethodInfo methodInfo, string declaredTypeName, string methodName,
+					string[] typeParameterNames = null) {
+
+				if (string.IsNullOrEmpty(declaredTypeName)) {
+					throw new ArgumentNullException($"{nameof(declaredTypeName)} cannot be empty.");
+				}
+				if (string.IsNullOrEmpty(methodName)) {
+					throw new ArgumentNullException($"{nameof(methodName)} cannot be empty.");
+				}
+
+				this.methodInfo = methodInfo;
+				fullMethodName = new FullMethodName(declaredTypeName, methodName, typeParameterNames);
+
+				isMethodInfo = true;
+			}
+
+			public MethodInfoData(MethodInfo methodInfo, Type declaringType, string methodName,
+					Type[] parameters = null, Type[] generics = null) {
+
+				if (declaringType == null) {
+					throw new ArgumentNullException($"{nameof(declaringType)} cannot be null.");
+				}
+				if (string.IsNullOrEmpty(methodName)) {
+					throw new ArgumentException($"{nameof(methodName)} cannot be null or empty.");
+				}
+
+				this.methodInfo = methodInfo;
+				fullMethodName = new FullMethodName(declaringType.Name, methodName, parameters);
+
+				isMethodInfo = true;
+			}
+
+			public MethodInfoData(Type declaringType, string methodName,
+					Type[] parameters = null, Type[] generics = null) {
+
+				if (declaringType == null) {
+					throw new ArgumentNullException($"{nameof(declaringType)} cannot be null.");
+				}
+				if (string.IsNullOrEmpty(methodName)) {
+					throw new ArgumentException($"{nameof(methodName)} cannot be null or empty.");
+				}
+
+				this.declaringType = declaringType;
+				this.methodName = methodName;
+				this.parameters = parameters;
+				this.generics = generics;
+				fullMethodName = new FullMethodName(declaringType.Name, methodName, parameters);
+			}
+
+			public MethodInfoData(Type declaringType, string methodName,
+					string[] fullTypeParameters = null, Type[] generics = null) {
+
+				if (declaringType == null) {
+					throw new ArgumentNullException($"{nameof(declaringType)} cannot be null.");
+				}
+				if (string.IsNullOrEmpty(methodName)) {
+					throw new ArgumentException($"{nameof(methodName)} cannot be null or empty.");
+				}
+
+				this.declaringType = declaringType;
+				this.methodName = methodName;
+				this.fullTypeParameters = fullTypeParameters;
+				this.generics = generics;
+				fullMethodName = new FullMethodName(declaringType.Name, methodName, fullTypeParameters);
+			}
+
+			public MethodInfoData(string fullTypeName, string methodName,
+					string[] fullTypeParameters = null, Type[] generics = null) {
+
+				if (string.IsNullOrEmpty(fullTypeName)) {
+					throw new ArgumentNullException($"{nameof(fullTypeName)} cannot be null or empty.");
+				}
+				if (string.IsNullOrEmpty(methodName)) {
+					throw new ArgumentException($"{nameof(methodName)} cannot be null or empty.");
+				}
+
+				this.fullTypeName = fullTypeName;
+				this.methodName = methodName;
+				this.fullTypeParameters = fullTypeParameters;
+				this.generics = generics;
+				fullMethodName = new FullMethodName(fullTypeName, methodName, fullTypeParameters);
+			}
+
+			public MethodInfo GetMethodInfo() {
+				if (isMethodInfo) {
+					return methodInfo;
+				} else {
+					Type type = declaringType != null ? declaringType :
+					AssemblyUtils.GetTypeFromLoadedAssemblies(fullTypeName, true);
+					Type[] paramTypes = parameters != null ? parameters :
+						AssemblyUtils.GetTypesFromLoadedAssemblies(true, fullTypeParameters);
+
+					return AccessTools.Method(type, methodName, paramTypes, generics);
+				}
+			}
+
+			public string GetFullMethodName() => fullMethodName.GetText();
+
+
+			private readonly struct FullMethodName {
+
+				private readonly string method;
+				private readonly string declaringType;
+				private readonly string[] parameters;
+
+				public FullMethodName(string declaredTypeName, string methodName,
+						string[] typeParameterNames = null) {
+
+					this.method = methodName;
+					this.declaringType = ReflectionHelper.ConvertFullTypeToNormal(declaredTypeName);
+					this.parameters = ReflectionHelper.ConvertFullTypesToNormal(typeParameterNames);
+				}
+
+				public FullMethodName(string declaredTypeName, string methodName,
+						Type[] typeParameter = null) {
+
+					this.method = methodName;
+					this.declaringType = ReflectionHelper.ConvertFullTypeToNormal(declaredTypeName);
+
+					string[] param = null;
+					if (typeParameter != null && typeParameter.Length > 0) {
+						param = typeParameter.Where(t => t != null).Select(t => t.Name).ToArray();
+					}
+					this.parameters = param;
+				}
+
+
+				public string GetText() {
+					string paramsStr = "";
+					if (parameters != null && parameters.Length > 0) {
+						paramsStr = string.Join(", ", parameters);
+					}
+
+					return $"{declaringType}.{method}({paramsStr})";
+				}
+
+			};
 
 		}
 
 	}
 
 	public class CheckResult {
+
+		public static CheckResult UnknownError = new CheckResult(
+			SignatureCheckResult.Unchecked, "Unknown Error due to exception"
+		);
+
+
+		public SignatureCheckResult Result { get; internal set; }
+
+		private string _result;
+
+		public string ResultMessage {
+			get { return _result; }
+			private set {
+				if (value == null) {
+					_result = "";
+				}
+				_result = value;
+			}
+		}
 
 		public enum SignatureCheckResult {
 			Unchecked,
@@ -468,22 +590,21 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		}
 
 		internal void AddErrorMessage(string resultMessage) {
-			if (ResultMessage != "") {
-				ResultMessage += $"\n{resultMessage}";
-			} else {
-				ResultMessage = resultMessage;
+			if (string.IsNullOrEmpty(ResultMessage)) {
+				ResultMessage = $"Method signatures have changed since last successful check:";
 			}
+			ResultMessage += $"\n{resultMessage}";
 		}
 
 		/// <summary>
 		/// If a message exists, logs it and optionally shows it in-game.
 		/// </summary>
-		/// <param name="logLevel">Log level.</param>
+		/// <param name="logLevel">FileLogging level.</param>
 		/// <param name="onlyWhenNotOk">Only logs if the result was some kind of problem we should be aware of.</param>
 		/// <param name="showInGame">If it should show in-game too.</param>
-		public void LogResultMessage(TimeLogger.LogTier logLevel, bool onlyWhenNotOk, bool showInGame) {
+		public void LogResultMessage(LogTier logLevel, bool onlyWhenNotOk, bool showInGame) {
 			if (ShouldLogMessage(onlyWhenNotOk)) {
-				TimeLogger.Logger.LogTime(logLevel, ResultMessage, TimeLogger.LogCategories.MethodChk, showInGame);
+				TimeLogger.Logger.LogTime(logLevel, ResultMessage, LogCategories.MethodChk, showInGame);
 			}
 		}
 
@@ -493,7 +614,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 					return false;
 				} else {
 					//This shouldnt happen.
-					ResultMessage = "Result message was empty for a result where it is not allowed.";
+					ResultMessage = "Result message was empty for a result in which this is not allowed.";
 					return true;
 				}
 			}
@@ -503,21 +624,6 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 			}
 
 			return true;
-		}
-
-
-		public SignatureCheckResult Result { get; internal set; }
-
-		private string _result;
-
-		public string ResultMessage {
-			get { return _result; }
-			private set {
-				if (value == null) {
-					_result = "";
-				}
-				_result = value;
-			}
 		}
 
 	}

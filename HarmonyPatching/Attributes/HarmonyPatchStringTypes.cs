@@ -1,6 +1,5 @@
 ﻿using System;
 using Damntry.Utils.Reflection;
-using Damntry.UtilsBepInEx.HarmonyPatching.Exceptions;
 using HarmonyLib;
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.Attributes {
@@ -71,10 +70,12 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.Attributes {
 
 		private void SetMethodInfo(string fullTypeName, string methodName, Type[] argumentTypes) {
 			Type declaringType = AssemblyUtils.GetTypeFromLoadedAssemblies(fullTypeName, true);
+			/* Cant throw exception since there might be a [HarmonyPrepare] conditionally checking if the patch happens.
+			 * Error will be catched by harmony patching.
 			if (declaringType == null) {
 				throw new TypeNotFoundInAssemblyException($"The type with value \"{fullTypeName}\" couldnt be found in the assembly.");
 			}
-
+			*/
 			info.declaringType = declaringType;
 			info.methodName = methodName;
 			info.argumentTypes = argumentTypes;
