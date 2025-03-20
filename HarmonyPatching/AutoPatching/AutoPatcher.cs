@@ -114,7 +114,13 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 					}
 				}
 			} finally {
-				autoPatchInstance?.RaiseEventOnAutoPatchFinish(result);
+				try {
+					autoPatchInstance?.RaiseEventOnAutoPatchFinish(result);
+				}catch (Exception ex) {
+					TimeLogger.Logger.LogTimeExceptionWithMessage("Error calling RaiseEventOnAutoPatchFinish:", 
+						ex, LogCategories.AutoPatch);
+				}
+				
 			}
 
 			return result;

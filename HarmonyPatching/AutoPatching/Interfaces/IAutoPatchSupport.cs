@@ -4,7 +4,7 @@
 	/// Defines a patch that can automatically patch itself with little manual intervention.
 	/// NOTE: To use auto patching, the patch class must inherit <see cref="HybridPatchedInstance{T}"/> or 
 	/// <see cref="FullyAutoPatchedInstance{T}"/>, which implements this interface.
-	/// Then call <see cref="AutoPatcher.StartAutoPatcher(...)"/> to start the patching process.
+	/// Then call <see cref="AutoPatcher.StartAutoPatcher()"/> to start the patching process.
 	/// </summary>
 	public interface IAutoPatchSupport : ISelfPatch {
 

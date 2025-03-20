@@ -89,7 +89,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses {
 		/// this Instance patching attempt is completed, the setting is shown only in ConfigurationManager if the patch was successful and currently active.
 		/// </summary>
 		/// <typeparam name="T"></typeparam>
-		/// <param name="configEntry">The ConfigEntry<typeparamref name="T"/> settings that depends on the patchInstance.</param>
+		/// <param name="configEntry">The ConfigEntry<T> setting that depends on the patchInstance.</param>
 		public void SetSettingPatchDependence<U>(ConfigEntry<U> configEntry) {
 			OnPatchFinished += (IsPatchActive) => {
 				configEntry.SetConfigAttribute(ConfigurationManagerAttributes.ConfigAttributes.Browsable, IsPatchActive);
