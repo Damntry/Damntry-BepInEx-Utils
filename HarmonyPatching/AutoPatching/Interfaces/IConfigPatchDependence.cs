@@ -1,6 +1,5 @@
 ﻿using BepInEx.Configuration;
-using Damntry.UtilsBepInEx.ConfigurationManager;
-using Damntry.UtilsBepInEx.ConfigurationManager.SettingAttributes;
+using Damntry.UtilsBepInEx.Configuration.ConfigurationManager;
 
 namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces {
 
@@ -12,7 +11,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces {
 	/// </summary>
 	public interface IConfigPatchDependence {
 
-		void SetSettingPatchDependence<T>(ConfigManagerController configManagerControl, ConfigEntry<T> configEntry);
+		void SetSettingPatchDependence<T>(ConfigEntry<T> configEntry);
 
 	}
 }

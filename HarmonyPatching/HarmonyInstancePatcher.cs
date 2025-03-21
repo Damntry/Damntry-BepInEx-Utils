@@ -1,81 +1,112 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Damntry.Utils.ExtensionMethods;
 using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Attributes;
-using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces;
 using HarmonyLib;
 
-namespace Damntry.UtilsBepInEx.HarmonyPatching
-{
+namespace Damntry.UtilsBepInEx.HarmonyPatching {
 
-    public class HarmonyInstancePatcher<T> where T : IAutoPatchSupport {
+	public class HarmonyInstancePatcher {
 
 
-		private readonly Type thisInstanceType = typeof(T);
+		private readonly Type harmonyInstanceType;
 
 		private readonly Lazy<Harmony> harmonyPatch;
 
 
-		public HarmonyInstancePatcher() {
+		private enum PatchRecursiveAction {
+			StopAll,                //Completely stop this recursive branch.
+			SkipAndContinueNested,  //Dont patch, but keep going recursively.
+			PatchAndContinueNested  //Do surface level patches that are not in any subclass, and keep going recursively.
+		}
+
+
+		public HarmonyInstancePatcher(Type harmonyInstanceType) {
+			this.harmonyInstanceType = harmonyInstanceType;
+
 			harmonyPatch = new Lazy<Harmony>(() => new Harmony(GetHarmonyInstanceId()));
 		}
 
 
 		internal string GetHarmonyInstanceId() {
-			return thisInstanceType.FullName;
+			return harmonyInstanceType.FullName;
 		}
 
-		public void PatchInstance() {
-			StartRecursivePatching(harmonyPatch.Value);
+		public List<MethodInfo> PatchInstance() {
+			return StartRecursivePatching(harmonyPatch.Value);
 		}
 
 		public void UnpatchInstance() {
 			harmonyPatch.Value.UnpatchSelf();
 		}
 
-		private void StartRecursivePatching(Harmony harmonyPatch) {
-			bool keepGoing = DoPatchIfAttributeAllows(harmonyPatch, thisInstanceType);
-
-			if (!keepGoing) {
-				return;
-			}
-
-			//Patch recursively through nested classes
-			PatchNestedClassesRecursive(new List<Type>(), thisInstanceType, harmonyPatch);
+		public int GetPatchedCount() {
+			return harmonyPatch.Value.GetPatchedMethods().Count();
 		}
 
-		private List<Type> PatchNestedClassesRecursive(List<Type> classList, Type classType, Harmony harmony) {
+		private List<MethodInfo> StartRecursivePatching(Harmony harmonyPatch) {
+			List<MethodInfo> listPatchedMethods = new();
+
+			bool continueRecursive = PatchClass(harmonyInstanceType, harmonyPatch, listPatchedMethods);
+
+			if (continueRecursive) {
+				//Patch recursively through nested classes
+				PatchNestedClassesRecursive(new List<Type>(), harmonyInstanceType, harmonyPatch, listPatchedMethods);
+			}
+
+			return listPatchedMethods;
+		}
+
+		private void PatchNestedClassesRecursive(List<Type> classList, Type classType, Harmony harmony, List<MethodInfo> listPatchedMethods) {
 			Type[] nestedTypes = classType.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
 
 			foreach (Type nestedType in nestedTypes) {
-				//Skip classes with the attribute [AutoPatchIgnoreClass]
 				if (nestedType.IsClass) {
 
-					bool keepGoing = DoPatchIfAttributeAllows(harmony, nestedType);
+					bool continueRecursive = PatchClass(nestedType, harmony, listPatchedMethods);
 
-					if (!keepGoing) {
+					if (!continueRecursive) {
 						continue;
 					}
 
-					PatchNestedClassesRecursive(classList, nestedType, harmony);
+					PatchNestedClassesRecursive(classList, nestedType, harmony, listPatchedMethods);
 				}
 			}
-
-			return classList;
 		}
 
-		private bool DoPatchIfAttributeAllows(Harmony harmony, Type classType) {
-			if (classType.HasCustomAttribute<AutoPatchIgnoreClassAndNested>()) {
+		private bool PatchClass(Type classType, Harmony harmonyPatch, List<MethodInfo> listPatchedMethods) {
+			PatchRecursiveAction patchAction = CheckAttributesForAllowedAction(classType);
+
+			if (patchAction == PatchRecursiveAction.StopAll) {
 				return false;
 			}
 
-			if (!classType.HasCustomAttribute<AutoPatchIgnoreClass>()) {
-				//Do surface level patches that are not in any subclass
-				harmony.PatchAll(classType);
+			if (patchAction == PatchRecursiveAction.PatchAndContinueNested) {
+				var patchProcessor = harmonyPatch.CreateClassProcessor(classType, allowUnannotatedType: true);
+
+				listPatchedMethods.AddRange(
+					patchProcessor.Patch()
+				);
 			}
 
 			return true;
+		}
+
+		private PatchRecursiveAction CheckAttributesForAllowedAction(Type classType) {
+			if (classType.HasCustomAttribute<AutoPatchIgnoreClassAndNested>()) {
+				//Completely stop this recursive branch.
+				return PatchRecursiveAction.StopAll;
+			}
+
+			if (classType.HasCustomAttribute<AutoPatchIgnoreClass>()) {
+				//Dont patch, but keep going recursively.
+				return PatchRecursiveAction.SkipAndContinueNested;
+			}
+
+			//Do surface level patches that are not in any subclass, and keep going recursively.
+			return PatchRecursiveAction.PatchAndContinueNested;
 		}
 
 		public List<MethodInfo> PatchClassByType(Type classType) {
@@ -90,7 +121,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching
 		/// <param name="originalMethodName">The name of the method in the original class that is going to be unpatched. </param>
 		public void UnpatchMethod(Type originalClassType, string originalMethodName) {
 			if (originalMethodName == null) {
-				throw new ArgumentNullException($"{nameof(originalMethodName)} cannot be null.");
+				throw new ArgumentNullException(nameof(originalMethodName));
 			}
 
 			MethodInfo method = AccessTools.Method(originalClassType, originalMethodName);
@@ -103,13 +134,13 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching
 
 		private void ThrowIfNotOwnInstanceNestedClass(Type classType) {
 			if (classType == null) {
-				throw new ArgumentNullException("ClassType argument cant be null.");
+				throw new ArgumentNullException(nameof(classType));
 			}
-			if (classType == thisInstanceType) {
+			if (classType == harmonyInstanceType) {
 				throw new InvalidOperationException($"Use the method PatchInstance/UnpatchInstance() instead.");
 			}
-			if (GetTopClassOfNested(classType) != thisInstanceType) {
-				throw new InvalidOperationException($"Class must be a nested class of {thisInstanceType.FullName}. " +
+			if (GetTopClassOfNested(classType) != harmonyInstanceType) {
+				throw new InvalidOperationException($"Class must be a nested class of {harmonyInstanceType.FullName}. " +
 					$"If you want to do this action on another Instance, use that instance methods instead.");
 			}
 		}

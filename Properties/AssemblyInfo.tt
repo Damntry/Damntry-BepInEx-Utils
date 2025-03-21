@@ -1,0 +1,18 @@
+﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+
+using System.Reflection;
+
+[assembly: AssemblyTitle("<#=ProductName#>")]
+[assembly: AssemblyDescription("<#=Description#>")]
+[assembly: AssemblyCompany("<#=AuthorName#>")]
+[assembly: AssemblyProduct("<#=ProductName#>")]
+[assembly: AssemblyCopyright("Copyright © <#=AuthorName#> <#=DateTime.Now.Year#>")]
+[assembly: AssemblyVersion("<#=Version#>")]
+[assembly: AssemblyFileVersion("<#=Version#>")]
+
+<#+
+    string ProductName = "Damntry BepInEx Globals";
+	string Description = "Utils usable in any type of BepInEx project";
+	string Version = "0.5.8";
+	string AuthorName = "Damntry";
+#>

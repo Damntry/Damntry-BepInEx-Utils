@@ -8,6 +8,8 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses.Inherita
 	// Because I think remembering that some cases DO work? I ended up mapping how patching and attributes work from
 	// Harmony source code to figure it all out, but my brain deleted pretty much all of it.
 	// I think it was when a class had multiple subclasses? Something like that maybe. I need to check again.
+	// Brain started working for a nanosecond and I think Harmony has zero nested patching, and I was remembering
+	// wrong, maybe thinking of a transpiler anonymous method?
 
 
 	/// <summary>
@@ -37,26 +39,22 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses.Inherita
 
 		public void AutoPatchResultEvent(AutoPatchResult autoPatchResult) => IsPatchActive = IsPatchActiveFromResult(autoPatchResult);
 
-
 		public override event Action<bool> OnPatchFinished;
 
+		/// <summary>Purely used for derived classes to have a method for when patching finishes.</summary>
+		public virtual void OnPatchFinishedVirtual(bool IsActive) { }
 
-		public override void PatchInstance() {
-			harmonyPatchInstance.Value.PatchInstance();
-		}
-
-		public override void UnpatchInstance() {
-			harmonyPatchInstance.Value.UnpatchInstance();
-		}
 
 
 		public override void RaiseEventOnAutoPatchFinish(AutoPatchResult autoPatchResult) {
 			AutoPatchResultEvent(autoPatchResult);
 
-			//Raise event for all subscribers
+			//Raise generic event for all subscribers
 			if (OnPatchFinished != null) {
 				OnPatchFinished(IsPatchActive);
 			}
+
+			OnPatchFinishedVirtual(IsPatchActive);
 		}
 
 	}
