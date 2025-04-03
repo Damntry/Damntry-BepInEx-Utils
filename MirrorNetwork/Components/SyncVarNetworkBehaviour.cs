@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
-using System.Runtime.CompilerServices;
 using Damntry.Utils.ExtensionMethods;
 using Damntry.Utils.Logging;
 using Damntry.Utils.Reflection;
@@ -257,26 +256,72 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 		private List<(MethodInfo origMethod, MethodInfo targetMethod)> GetRPC_MethodTargets() =>
 			derivedType.GetMethods(SearchFlags)
 				.Where(mi => mi.HasCustomAttribute<RPC_CallOnClientAttribute>())
-				.Select(mi => (mi, GetMethodInfoFromRPCAttribute(mi.GetCustomAttribute<RPC_CallOnClientAttribute>())))
+				.Select(mi => (mi, GetMethodInfoFromRPCAttribute(mi)))
 				.Where(tup => tup.Item2 != null)  //Filter out the invalid Delegates.
 			.ToList();
 
-		private MethodInfo GetMethodInfoFromRPCAttribute(RPC_CallOnClientAttribute attr) {
+		private MethodInfo GetMethodInfoFromRPCAttribute(MethodInfo methodInfo) {
 			//Generate delegate from the attribute values
+			RPC_CallOnClientAttribute attr = methodInfo.GetCustomAttribute<RPC_CallOnClientAttribute>();
 			if (Type.GetType(attr.declaringType.AssemblyQualifiedName) == null) {
 				TimeLogger.Logger.LogTimeError($"The type {nameof(attr.declaringType.FullName)} could not be found.",
 					LogCategories.Network);
 			}
 
-			//TODO 0 - Network - Check that the target method has exactly the same signature as the original one,
-			//	including static or not. Except for the return value maybe?
+			MethodInfo targetMethodInfo = AccessTools.Method(attr.declaringType, attr.targetMethodName, attr.parameters, attr.generics);
 
-			return AccessTools.Method(attr.declaringType, attr.targetMethodName, attr.parameters, attr.generics);
+			if (targetMethodInfo != null) {
+				if (!CompareMethodSignatures(methodInfo, targetMethodInfo)) {
+					targetMethodInfo = null;
+				}
+			}
+
+			return targetMethodInfo;
+		}
+
+		public static bool CompareMethodSignatures(MethodInfo mi1, MethodInfo mi2, bool compareDeclaringType = false) {
+			List<string> errors = new();
+
+			//TODO 0 - Is mi1.ContainsGenericParameters something I need to check?
+			//	I guess I should return false right now and think if it is useful
+			//	to add support for methods with generic parameters.
+			//There is also mi1.IsGeneric? Check the difference.
+			/*
+			if (compareDeclaringType && mi1.DeclaringType != mi2.DeclaringType) {
+
+			}
+			*/
+			if (mi1.IsGenericMethod || mi2.IsGenericMethod) {
+				errors.Add("generic methods not supported");
+			}
+			if (mi1.ReturnType != mi2.ReturnType) {
+				errors.Add("return type");
+			}
+			if (mi1.GetParameters().Length != mi2.GetParameters().Length) {
+				errors.Add("number of parameters");
+			} else {
+				for (int i = 0; i < mi1.GetParameters().Length; i++) {
+					if (mi1.GetParameters()[i].ParameterType != mi2.GetParameters()[i].ParameterType) {
+						errors.Add($"param {i + 1} type");
+					}
+				}
+			}
+			if (mi1.IsStatic != mi2.IsStatic) {
+				errors.Add($"static modifier");
+			}
+
+			if (errors.Count > 0) {
+				TimeLogger.Logger.LogTimeError($"The methods {mi1.DeclaringType.Name}.{mi1.Name} and " +
+					$"{mi2.DeclaringType.Name}.{mi2.Name} need to have the same method signature. Fix the " +
+					$"following differences: {String.Join(", ", errors)}", LogCategories.Reflect);
+			}
+			
+			return errors.Count == 0;
 		}
 
 
 		[HarmonyDebug]
-		private static IEnumerable TranspileRPC_Call(IEnumerable<CodeInstruction> instructions, MethodBase originalMethod) {
+		private static IEnumerable TranspileRPC_Call(IEnumerable<CodeInstruction> instructions, ILGenerator generator, MethodBase originalMethod) {
 			if (!methodRedirects.TryGetValue(originalMethod, out MethodInfo targetMethod)){
 				//TODO 0 - Network - Some error thrown.
 			}
@@ -289,6 +334,9 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 				//Host. Generate and send the RPC request to the clients.
 				
 				codeMatcher.Advance(1);
+
+				InsertRPC_Generation(codeMatcher, generator, 
+					targetMethod.GetParameters().Length, targetMethod.IsStatic);
 
 				//TODO 0 - Network - Call to generate RPC method with the network stuff, like RpcUpdateSuperMarketName.
 				//TODO 0 - Network - I dont know the args in advance, so I need pass them as an object array, which
@@ -307,6 +355,64 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 			LOG.TEMPWARNING($"After emitting delegate " + codeMatcher.InstructionEnumeration().GetFormattedIL());
 
 			return codeMatcher.InstructionEnumeration();
+		}
+
+		private static void InsertRPC_Generation(CodeMatcher codeMatcher, ILGenerator generator, int argCount, bool isStatic) {
+			///All this code is basically doing this:
+			///	this.GenerateRPC_Call(new List<object> { arg1, arg2, argX... }.ToArray());
+			///	With list it is easier than array and the performance loss being a networked
+			///	method is negligible.
+
+			//Since we need to box all arguments into an object, we can just use 
+			//	ArrayList instead of using the Generic List and having to bound it.
+			LocalBuilder localArrayList = generator.DeclareLocal(typeof(ArrayList));
+			ConstructorInfo constInfo = typeof(ArrayList).GetConstructor([]);
+			MethodInfo listAddMethod = typeof(ArrayList).GetMethod("Add", types: [typeof(object)]);
+			MethodInfo listToArrayMethod = typeof(ArrayList).GetMethod("ToArray", types: []);
+			
+
+			codeMatcher
+				.InsertAndAdvance(new CodeInstruction(OpCodes.Newobj, constInfo))
+				.InsertAndAdvance(CodeInstructionNew.StoreLocal(localArrayList.LocalIndex));
+
+			//If method is static, skip arg0 with "this" reference
+			int startIndex = isStatic ? 0 : 1;
+			int maxArgs = argCount + startIndex;
+
+			//Add arguments into the arraylist
+			for (int i = startIndex; i < maxArgs; i++) {
+				codeMatcher
+					.InsertAndAdvance(new CodeInstruction(OpCodes.Ldloc_0))
+					.InsertAndAdvance(CodeInstructionNew.LoadArgument(i))
+					.InsertAndAdvance(new CodeInstruction(OpCodes.Box, typeof(object)))
+					.InsertAndAdvance(new CodeInstruction(OpCodes.Callvirt, listAddMethod));
+			}
+
+			if (isStatic) {
+				codeMatcher.InsertAndAdvance(CodeInstructionNew.LoadArgument(0));
+			}
+
+			codeMatcher
+				.InsertAndAdvance(new CodeInstruction(OpCodes.Ldloc_0))
+				.InsertAndAdvance(new CodeInstruction(OpCodes.Callvirt, listToArrayMethod))
+				.Insert(Transpilers.EmitDelegate(GenerateRPC_Call));
+			/*
+				IL_0001: newobj instance void class [System.Collections]System.Collections.Generic.List`1<object>::.ctor()
+				IL_0006: stloc.0
+				IL_0007: ldloc.0
+				IL_0008: ldarg.1
+				IL_0009: box [System.Runtime]System.Int32
+				IL_000e: callvirt instance void class [System.Collections]System.Collections.Generic.List`1<object>::Add(!0)
+				IL_0013: nop
+				IL_0014: ldloc.0
+				IL_0015: ldarg.2
+				IL_0016: callvirt instance void class [System.Collections]System.Collections.Generic.List`1<object>::Add(!0)
+				IL_001b: nop
+				IL_001c: ldarg.0
+				IL_001d: ldloc.0
+				IL_001e: callvirt instance !0[] class [System.Collections]System.Collections.Generic.List`1<object>::ToArray()
+				IL_0023: call instance void C::GenerateRPC_Call(object[])
+			 */
 		}
 
 		private static void GenerateRPC_Call(object[] args) {
