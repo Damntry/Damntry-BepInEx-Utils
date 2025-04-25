@@ -22,7 +22,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 
 	}
 
-	//TODO 0 - Network - Change name of this. Its no longer just for SyncVars, but also CMDs and RPCs
+	//TODO 0 Network - Change name of this. Its no longer just for SyncVars, but also CMDs and RPCs
 	/// <summary>
 	/// Primarily meant to be used to automatically initialize <see cref="SyncVar{T}"/> objects 
 	/// annotated with the attribute <see cref="SyncVarNetworkAttribute"/>
@@ -31,7 +31,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 	public abstract class SyncVarNetworkBehaviour<T> : NetworkBehaviour, ISyncVarBehaviour 
 			where T : SyncVarNetworkBehaviour<T> {
 
-		//TODO 0 - Network - Out of curiosity, do a quick test and see if the annotated function having a
+		//TODO 0 Network - Out of curiosity, do a quick test and see if the annotated function having a
 		//	return object works (it shouldnt). See how easy it would be to fix, or otherwise just check for it
 		//	and throw an exception.
 
@@ -99,7 +99,9 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 				syncVarInstance.SetToDefaultValue();
 			}
 
-			//InitializeRedirectsRPC_CMD(); TODO 0 RPC_Method - Commented until its finished.
+#if DEBUG  //TODO 0 Network - DEBUG ONLY TEMP UNTIL FINAL RELEASE                              
+			InitializeRedirectsRPC_CMD();
+#endif
 
 			OnSyncVarValuesDefaulted();
 		}
@@ -214,7 +216,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 			return methodDelegate;
 		}
 
-		// TODO 0 - Network - For the comments
+		// TODO 0 Network - For the comments
 		//
 		//	I forgot that the host commonly also need to execute the client code in the onStartClient, so
 		//	they NEED to be able to execute it too, which means someone using the single method way, would
@@ -231,7 +233,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 			LOG.TEMPWARNING($"{methodsRPC.Count} RPC methods");
 			foreach (var method in methodsRPC) {
 				if (methodRedirects.ContainsKey(method.origMethod)) {
-					//TODO 0 - Network - Log error
+					//TODO 0 Network - Log error
 					continue;
 				}
 				methodRedirects.Add(method.origMethod, method.targetMethod);
@@ -282,7 +284,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 		public static bool CompareMethodSignatures(MethodInfo mi1, MethodInfo mi2, bool compareDeclaringType = false) {
 			List<string> errors = new();
 
-			//TODO 0 - Is mi1.ContainsGenericParameters something I need to check?
+			//TODO 0 Network - Is mi1.ContainsGenericParameters something I need to check?
 			//	I guess I should return false right now and think if it is useful
 			//	to add support for methods with generic parameters.
 			//There is also mi1.IsGeneric? Check the difference.
@@ -323,7 +325,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 		[HarmonyDebug]
 		private static IEnumerable TranspileRPC_Call(IEnumerable<CodeInstruction> instructions, ILGenerator generator, MethodBase originalMethod) {
 			if (!methodRedirects.TryGetValue(originalMethod, out MethodInfo targetMethod)){
-				//TODO 0 - Network - Some error thrown.
+				//TODO 0 Network - Some error thrown.
 			}
 
 			CodeMatcher codeMatcher = new(instructions);
@@ -335,14 +337,8 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 				
 				codeMatcher.Advance(1);
 
-				InsertRPC_Generation(codeMatcher, generator, 
-					targetMethod.GetParameters().Length, targetMethod.IsStatic);
-
-				//TODO 0 - Network - Call to generate RPC method with the network stuff, like RpcUpdateSuperMarketName.
-				//TODO 0 - Network - I dont know the args in advance, so I need pass them as an object array, which
-				//	means inserting all argX IL elements into an array.
-				//LoadMethodArgIntoStack(codeMatcher, targetMethod);
-				//codeMatcher.Insert(Transpilers.EmitDelegate(GenerateRPC_Call));
+				InsertRPC_GenerationCall(codeMatcher, generator, 
+					targetMethod.GetParameters(), targetMethod.IsStatic);
 
 			} else if (NetworkClient.active) {
 				LOG.TEMPWARNING("Client. Executing next.");
@@ -357,74 +353,58 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 			return codeMatcher.InstructionEnumeration();
 		}
 
-		private static void InsertRPC_Generation(CodeMatcher codeMatcher, ILGenerator generator, int argCount, bool isStatic) {
-			///All this code is basically doing this:
-			///	this.GenerateRPC_Call(new List<object> { arg1, arg2, argX... }.ToArray());
-			///	With list it is easier than array and the performance loss being a networked
-			///	method is negligible.
+		private static void InsertRPC_GenerationCall(CodeMatcher codeMatcher, ILGenerator generator, 
+				ParameterInfo[] parameters, bool isStatic) {
 
-			//Since we need to box all arguments into an object, we can just use 
-			//	ArrayList instead of using the Generic List and having to bound it.
-			LocalBuilder localArrayList = generator.DeclareLocal(typeof(ArrayList));
-			ConstructorInfo constInfo = typeof(ArrayList).GetConstructor([]);
-			MethodInfo listAddMethod = typeof(ArrayList).GetMethod("Add", types: [typeof(object)]);
-			MethodInfo listToArrayMethod = typeof(ArrayList).GetMethod("ToArray", types: []);
-			
+			///Generate this call:
+			///		MakeRPC_Call(new object[] { Arg1, Arg2, Arg3, ... });
 
-			codeMatcher
-				.InsertAndAdvance(new CodeInstruction(OpCodes.Newobj, constInfo))
-				.InsertAndAdvance(CodeInstructionNew.StoreLocal(localArrayList.LocalIndex));
+			int argCount = parameters.Length;
 
-			//If method is static, skip arg0 with "this" reference
-			int startIndex = isStatic ? 0 : 1;
-			int maxArgs = argCount + startIndex;
-
-			//Add arguments into the arraylist
-			for (int i = startIndex; i < maxArgs; i++) {
+			if (argCount > 0) {
+				//Create array
 				codeMatcher
-					.InsertAndAdvance(new CodeInstruction(OpCodes.Ldloc_0))
-					.InsertAndAdvance(CodeInstructionNew.LoadArgument(i))
-					.InsertAndAdvance(new CodeInstruction(OpCodes.Box, typeof(object)))
-					.InsertAndAdvance(new CodeInstruction(OpCodes.Callvirt, listAddMethod));
+					.InsertAndAdvance(new CodeInstruction(OpCodes.Ldc_I4, argCount))
+					.InsertAndAdvance(new CodeInstruction(OpCodes.Newarr, typeof(object)));
+
+				//If method is not static, skip arg0 with reference to "this"
+				int startIndex = isStatic ? 0 : 1;
+
+				//Add arguments into the array
+				for (int i = 0; i < argCount; i++) {
+					codeMatcher
+						.InsertAndAdvance(new CodeInstruction(OpCodes.Dup))
+						.InsertAndAdvance(new CodeInstruction(OpCodes.Ldc_I4, i))
+						.InsertAndAdvance(CodeInstructionNew.LoadArgument(i + startIndex));
+
+					Type argType = parameters[i].ParameterType;
+					if (argType.IsValueType) {
+						codeMatcher.InsertAndAdvance(new CodeInstruction(OpCodes.Box, argType));
+					}
+					codeMatcher.InsertAndAdvance(new CodeInstruction(OpCodes.Stelem_Ref));
+				}
 			}
 
-			if (isStatic) {
-				codeMatcher.InsertAndAdvance(CodeInstructionNew.LoadArgument(0));
-			}
-
-			codeMatcher
-				.InsertAndAdvance(new CodeInstruction(OpCodes.Ldloc_0))
-				.InsertAndAdvance(new CodeInstruction(OpCodes.Callvirt, listToArrayMethod))
-				.Insert(Transpilers.EmitDelegate(GenerateRPC_Call));
-			/*
-				IL_0001: newobj instance void class [System.Collections]System.Collections.Generic.List`1<object>::.ctor()
-				IL_0006: stloc.0
-				IL_0007: ldloc.0
-				IL_0008: ldarg.1
-				IL_0009: box [System.Runtime]System.Int32
-				IL_000e: callvirt instance void class [System.Collections]System.Collections.Generic.List`1<object>::Add(!0)
-				IL_0013: nop
-				IL_0014: ldloc.0
-				IL_0015: ldarg.2
-				IL_0016: callvirt instance void class [System.Collections]System.Collections.Generic.List`1<object>::Add(!0)
-				IL_001b: nop
-				IL_001c: ldarg.0
-				IL_001d: ldloc.0
-				IL_001e: callvirt instance !0[] class [System.Collections]System.Collections.Generic.List`1<object>::ToArray()
-				IL_0023: call instance void C::GenerateRPC_Call(object[])
-			 */
+			//Call RPC method generation
+			codeMatcher.Insert(Transpilers.EmitDelegate(MakeRPC_Call));
 		}
 
-		private static void GenerateRPC_Call(object[] args) {
+		private static void MakeRPC_Call(object[] args) {
+			//TODO 0 Network - Maybe I should just use the original Weaver functions and stop reinventing the wheel?
+			//	https://github.com/MirrorNetworking/Mirror/blob/master/Assets/Mirror/Editor/Weaver/Processors/RpcProcessor.cs#L59
+
+			LOG.TEMPWARNING($"MakeRPC_Call - {args.Length} ({args[0]}) params: {string.Join(", ", args)}");
 			NetworkWriterPooled writer = NetworkWriterPool.Get();
 			foreach (object parameter in args) {
-				//TODO 0 - Network - For each parameter:
+				
+				//TODO 0 Network - For each parameter:
 				//		writer.WriteString(SuperMarketText);
 			}
 
-			//TODO 0 - Network - The 1º parameter is just for logging, the 2º param with the hash is the method to call.
+			//TODO 0 Network - The 1º parameter is just for logging, the 2º param with the hash is the method to call.
 			//SendRPCInternal("System.Void NetworkSpawner::RpcUpdateSuperMarketName(System.String)", -700807513, writer, 0, true);
 			NetworkWriterPool.Return(writer);
+			LOG.TEMPWARNING($"MakeRPC_Call finished");
 		}
 
 		private static void EmitCallTargetMethod(CodeMatcher codeMatcher, MethodInfo targetMethod) {

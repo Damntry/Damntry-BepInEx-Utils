@@ -12,8 +12,11 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="lib\**" />
+    <Compile Remove="MirrorNetwork\Weaver\**" />
     <EmbeddedResource Remove="lib\**" />
+    <EmbeddedResource Remove="MirrorNetwork\Weaver\**" />
     <None Remove="lib\**" />
+    <None Remove="MirrorNetwork\Weaver\**" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="BepInEx.Core">

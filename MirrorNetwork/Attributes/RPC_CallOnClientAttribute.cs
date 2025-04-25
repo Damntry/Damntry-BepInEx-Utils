@@ -7,7 +7,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Attributes {
 
 	public class RPC_CallOnClientAttribute : Attribute {
 
-		//TODO 0 - Network - This should probably go out, since I only plan on giving support
+		//TODO 0 Network - This should probably go out, since I only plan on giving support
 		//	to methods in the same derived class.
 		public Type declaringType;
 
