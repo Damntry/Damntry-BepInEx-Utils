@@ -32,7 +32,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Damntry Globals Unity\Damntry Globals Unity.csproj" />
-    <ProjectReference Include="..\Damntry Globals\Damntry Globals.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Properties\AssemblyInfo.tt">
