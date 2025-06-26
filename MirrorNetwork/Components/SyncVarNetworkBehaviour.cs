@@ -28,7 +28,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 	/// annotated with the attribute <see cref="SyncVarNetworkAttribute"/>
 	/// </summary>
 	/// <typeparam name="T">The class that derives from this SyncVarNetworkBehaviour.</typeparam>
-	public abstract class SyncVarNetworkBehaviour<T> : NetworkBehaviour, ISyncVarBehaviour 
+	public abstract class SyncVarNetworkBehaviour<T> : NetworkBehaviour, ISyncVarBehaviour
 			where T : SyncVarNetworkBehaviour<T> {
 
 		//TODO 0 Network - Out of curiosity, do a quick test and see if the annotated function having a
@@ -52,7 +52,12 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 
 		private static readonly Dictionary<MethodBase, MethodInfo> methodRedirects = new();
 
-		private readonly Harmony harmony = new (typeof(SyncVarNetworkBehaviour<T>).FullName);
+		private readonly Harmony harmony = new(typeof(SyncVarNetworkBehaviour<T>).FullName);
+
+
+
+		private const bool IS_DEBUG_NETWORK_TESTS__ENABLED = false;
+
 
 
 		/// <summary>
@@ -99,8 +104,10 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 				syncVarInstance.SetToDefaultValue();
 			}
 
-#if DEBUG  //TODO 0 Network - DEBUG ONLY TEMP UNTIL FINAL RELEASE                              
-			InitializeRedirectsRPC_CMD();
+#if DEBUG  //TODO 0 Network - TEMP DEBUG UNTIL RELEASE                
+			if (IS_DEBUG_NETWORK_TESTS__ENABLED) {
+				InitializeRedirectsRPC_CMD();
+			}
 #endif
 
 			OnSyncVarValuesDefaulted();
@@ -317,14 +324,14 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 					$"{mi2.DeclaringType.Name}.{mi2.Name} need to have the same method signature. Fix the " +
 					$"following differences: {String.Join(", ", errors)}", LogCategories.Reflect);
 			}
-			
+
 			return errors.Count == 0;
 		}
 
 
 		[HarmonyDebug]
 		private static IEnumerable TranspileRPC_Call(IEnumerable<CodeInstruction> instructions, ILGenerator generator, MethodBase originalMethod) {
-			if (!methodRedirects.TryGetValue(originalMethod, out MethodInfo targetMethod)){
+			if (!methodRedirects.TryGetValue(originalMethod, out MethodInfo targetMethod)) {
 				//TODO 0 Network - Some error thrown.
 			}
 
@@ -334,10 +341,10 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 			if (NetworkServer.active) {
 				LOG.TEMPWARNING("Host. RPC network send logic.");
 				//Host. Generate and send the RPC request to the clients.
-				
+
 				codeMatcher.Advance(1);
 
-				InsertRPC_GenerationCall(codeMatcher, generator, 
+				InsertRPC_GenerationCall(codeMatcher, generator,
 					targetMethod.GetParameters(), targetMethod.IsStatic);
 
 			} else if (NetworkClient.active) {
@@ -353,7 +360,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 			return codeMatcher.InstructionEnumeration();
 		}
 
-		private static void InsertRPC_GenerationCall(CodeMatcher codeMatcher, ILGenerator generator, 
+		private static void InsertRPC_GenerationCall(CodeMatcher codeMatcher, ILGenerator generator,
 				ParameterInfo[] parameters, bool isStatic) {
 
 			///Generate this call:
@@ -396,7 +403,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 			LOG.TEMPWARNING($"MakeRPC_Call - {args.Length} ({args[0]}) params: {string.Join(", ", args)}");
 			NetworkWriterPooled writer = NetworkWriterPool.Get();
 			foreach (object parameter in args) {
-				
+
 				//TODO 0 Network - For each parameter:
 				//		writer.WriteString(SuperMarketText);
 			}
