@@ -104,7 +104,8 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 				syncVarInstance.SetToDefaultValue();
 			}
 
-#if DEBUG  //TODO 0 Network - TEMP DEBUG UNTIL RELEASE                
+#if DEBUG
+			//TODO 0 Network - TEMP DEBUG UNTIL RELEASE    
 			if (IS_DEBUG_NETWORK_TESTS__ENABLED) {
 				InitializeRedirectsRPC_CMD();
 			}
