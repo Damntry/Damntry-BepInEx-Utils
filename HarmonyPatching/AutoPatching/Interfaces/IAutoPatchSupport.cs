@@ -8,7 +8,7 @@
 	/// </summary>
 	public interface IAutoPatchSupport : ISelfPatch {
 
-		/// <summary>Indicates if the auto patcher will try and patch this class instance. Otherwise it is skipped.</summary>
+		/// <summary>Indicates if the auto patcher will try and patch this class Instance. Otherwise it is skipped.</summary>
 		bool IsAutoPatchEnabled { get; }
 
 		/// <summary>
@@ -18,8 +18,8 @@
 
 		/// <summary>
 		/// If, when the auto patching process fails to apply a patch, it 
-		/// should unpatch all previously applied patches of this instance, if any.
-		/// Only matters if there is more than one patch in the instance.
+		/// should unpatch all previously applied patches of this Instance, if any.
+		/// Only matters if there is more than one patch in the Instance.
 		/// </summary>
 		bool IsRollbackOnAutoPatchFail { get; }
 

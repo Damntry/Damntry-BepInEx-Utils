@@ -1,6 +1,8 @@
-﻿using System;
-using BepInEx;
+﻿using BepInEx;
 using BepInEx.Bootstrap;
+using Damntry.UtilsBepInEx.Configuration;
+using System;
+using System.Linq;
 
 
 namespace Damntry.UtilsBepInEx.ModHelpers {
@@ -14,7 +16,10 @@ namespace Damntry.UtilsBepInEx.ModHelpers {
 
 		protected ModLoadStatus ModStatus { get; private set; }
 
-		public bool IsModLoadedAndEnabled {
+		protected PluginInfo ModPluginInfo { get; private set; }
+
+
+        public bool IsModLoadedAndEnabled {
 			get {
 				return ModStatus != ModLoadStatus.NotLoaded;
 			}
@@ -71,9 +76,11 @@ namespace Damntry.UtilsBepInEx.ModHelpers {
 
 
 		protected virtual ModLoadStatus IsModLoaded() {
-			bool isModLoaded = Chainloader.PluginInfos.TryGetValue(ModInfo.GUID, out PluginInfo ModPluginInfo);
+			bool isModLoaded = Chainloader.PluginInfos.TryGetValue(ModInfo.GUID, out PluginInfo modPluginInfo);
+			ModPluginInfo = modPluginInfo;
 
-			if (isModLoaded) {
+
+            if (isModLoaded) {
 				//Check loaded version against the one we support.
 				ModInfo.LoadedVersion = ModPluginInfo.Metadata.Version;
 
@@ -87,7 +94,11 @@ namespace Damntry.UtilsBepInEx.ModHelpers {
 			return ModLoadStatus.NotLoaded;
 		}
 
-	}
+        protected bool GetConfigValue<T>(string configKey, out T value) {
+			return ConfigMethods.GetExternalConfigValue(ModInfo.GUID, configKey, out value);
+        }
+
+    }
 
 	/// <summary>
 	/// Holds basic mod information for ExternalModHelper to work. This class is usually extended to 

@@ -75,11 +75,11 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 			}
 
 			if (patchErrorCount == 0) {
-				TimeLogger.Logger.LogTimeInfo($"All {patchEnabledCount} auto-patches applied successfully.", LogCategories.Loading);
+				TimeLogger.Logger.LogInfo($"All {patchEnabledCount} auto-patches applied successfully.", LogCategories.Loading);
 
 				return true;
 			} else {
-				TimeLogger.Logger.LogTimeFatal($"Oh oh, {patchErrorCount} out of {patchEnabledCount} auto-patches failed. " +
+				TimeLogger.Logger.LogFatal($"Oh oh, {patchErrorCount} out of {patchEnabledCount} auto-patches failed. " +
 					$"Check above for errors.", LogCategories.Loading);
 
 				return false;
@@ -104,10 +104,10 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 
 			} catch (Exception ex) {
 				result = AutoPatchResult.error;
-				TimeLogger.Logger.LogTimeExceptionWithMessage($"Error auto patching class {autoPatchType.FullName}.", ex, LogCategories.Loading);
+				TimeLogger.Logger.LogExceptionWithMessage($"Error auto patching class {autoPatchType.FullName}.", ex, LogCategories.Loading);
 				//Log patch custom error message
 				if (autoPatchInstance != null) {
-					TimeLogger.Logger.LogTimeError(autoPatchInstance.ErrorMessageOnAutoPatchFail, LogCategories.AutoPatch);
+					TimeLogger.Logger.LogError(autoPatchInstance.ErrorMessageOnAutoPatchFail, LogCategories.AutoPatch);
 
 					if (autoPatchInstance.IsRollbackOnAutoPatchFail == true && autoPatchInstance.GetPatchedCount() > 0) {
 						autoPatchInstance.UnpatchInstance();
@@ -117,7 +117,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 				try {
 					autoPatchInstance?.RaiseEventOnAutoPatchFinish(result);
 				}catch (Exception ex) {
-					TimeLogger.Logger.LogTimeExceptionWithMessage("Error calling RaiseEventOnAutoPatchFinish:", 
+					TimeLogger.Logger.LogExceptionWithMessage("Error calling RaiseEventOnAutoPatchFinish:", 
 						ex, LogCategories.AutoPatch);
 				}
 				
@@ -143,7 +143,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 				autoPatchedInstanceBases.Cast<AutoPatchedInstanceBase>().(item);
 			}
 
-			TimeLogger.Logger.LogTimeExceptionWithMessage("", ex, LogCategories.AutoPatch);
+			TimeLogger.Logger.LogExceptionWithMessage("", ex, LogCategories.AutoPatch);
 			return autoPatchedInstanceBases;
 
 			return (IEnumerable<AutoPatchedInstanceBase>)assembly.GetTypes().Where

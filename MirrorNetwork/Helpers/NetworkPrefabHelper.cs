@@ -24,8 +24,8 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 
 			return prefabObj;
 		}
-
-		private static Transform GetRootNetworkTransform() {
+        
+        private static Transform GetRootNetworkTransform() {
 			//Any mod using this lib can create the parent object, so search if it already exists.
 			GameObject networkParentObj = GameObject.Find(NetworkRootObjName);
 			networkParentObj ??= new GameObject(NetworkRootObjName);
@@ -33,9 +33,35 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 			return networkParentObj.transform;
 		}
 
-		public static bool AssetIdExists(uint assetId) => NetworkClient.prefabs.ContainsKey(assetId);
+		public static bool AssetIdExistsAsPrefab(uint assetId) => NetworkClient.prefabs.ContainsKey(assetId);
 
-		public static bool IsPrefabGameObjectRegistered(GameObject prefabObj, uint expectedAssetId) =>
+		public static bool AssetIdAlreadyRegistered(uint assetId) {
+			string fieldName = "spawnHandlers";
+			Type netClientType = typeof(NetworkClient);
+
+            FieldInfo fInfo = AccessTools.Field(netClientType, fieldName);
+			if (fInfo == null) {
+                //Assume the Id is ok in the hopes that its not duplicated. AccessTools already logged it at least.
+                return true;
+			}
+
+			var dictInstance = fInfo.GetValue(null);
+            if (dictInstance == null) {
+                TimeLogger.Logger.LogError($"The field {netClientType}.{fieldName} value is null.", LogCategories.Network);
+                return true;
+            }
+            if (dictInstance is not Dictionary<uint, SpawnHandlerDelegate>) {
+				TimeLogger.Logger.LogError($"The field {netClientType}.{fieldName} does not have " +
+					$"the expected Dictionary type.", LogCategories.Network);
+                return true;
+            }
+
+			return ((Dictionary<uint, SpawnHandlerDelegate>)dictInstance).ContainsKey(assetId);
+		}
+
+            
+
+        public static bool IsPrefabGameObjectRegistered(GameObject prefabObj, uint expectedAssetId) =>
 			NetworkClient.prefabs != null
 				&& NetworkClient.prefabs.TryGetValue(expectedAssetId, out GameObject prefab)
 				&& GameObject.ReferenceEquals(prefabObj, prefab);
@@ -68,10 +94,10 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 					var spawnHandler = (Dictionary<uint, SpawnHandlerDelegate>)shInfo.GetValue(null);
 					return spawnHandler.TryGetValue(assetId, out spawnDelegate);
 				}
-				TimeLogger.Logger.LogTimeError($"The field {spawnHandlersName} could not be found in type " +
+				TimeLogger.Logger.LogError($"The field {spawnHandlersName} could not be found in type " +
 					$"{typeof(NetworkClient).Name}.", LogCategories.Network);
 			} catch (Exception ex) {
-				TimeLogger.Logger.LogTimeException(ex, LogCategories.Network);
+				TimeLogger.Logger.LogException(ex, LogCategories.Network);
 			}
 
 			IsFieldNotFound = true;

@@ -7,7 +7,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Attributes {
 
 	public class RPC_CallOnClientAttribute : Attribute {
 
-		//TODO 0 Network - This should probably go out, since I only plan on giving support
+		//TODO 1 Network - This should probably go out, since I only plan on giving support
 		//	to methods in the same derived class.
 		public Type declaringType;
 
@@ -29,11 +29,11 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Attributes {
 
 		private void SetTargetMethod(Type declaringType, string targetMethodName, Type[] parameters = null, Type[] generics = null) {
 			if (declaringType == null) {
-				TimeLogger.Logger.LogTimeError($"Parameter {nameof(declaringType)} is null.", LogCategories.Network);
+				TimeLogger.Logger.LogError($"Parameter {nameof(declaringType)} is null.", LogCategories.Network);
 				return;
 			}
 			if (string.IsNullOrEmpty(targetMethodName)) {
-				TimeLogger.Logger.LogTimeError($"Parameter {nameof(targetMethodName)} is null or empty.",
+				TimeLogger.Logger.LogError($"Parameter {nameof(targetMethodName)} is null or empty.",
 					LogCategories.Network);
 				return;
 			}

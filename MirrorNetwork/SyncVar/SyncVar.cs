@@ -23,6 +23,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Damntry.Utils.ExtensionMethods;
+using Damntry.Utils.Logging;
 using Damntry.Utils.Reflection;
 using Damntry.UtilsBepInEx.MirrorNetwork.Helpers;
 using Mirror;
@@ -32,7 +33,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.SyncVar {
 
 	public interface ISyncVar {
 
-		void SetToDefaultValue();
+		void SetToDefaultValue(Type declaringType, string syncVarName);
 
 		bool Writable();
 
@@ -48,7 +49,9 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.SyncVar {
 		// (only if SyncVar<T> isn't readonly though)
 		[SerializeField] protected T _Value;
 
-		private NetworkBehaviour networkBehaviourContainer;
+        public Action OnFinishSyncing;
+
+        private NetworkBehaviour networkBehaviourContainer;
 
 		// Value property with hooks
 		// virtual for SyncFieldNetworkIdentity netId trick etc.
@@ -71,17 +74,17 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.SyncVar {
 				T old = _Value;
 				_Value = value;
 				if (OnDirty != null) {
-					OnDirty();
-				}
+					OnDirty();  //Hooked on by NetworkBehaviour in the InitSyncObject method
+                }
 
 				// Value.set calls the hook if changed.
 				// calling Value.set from within the hook would call the
 				// hook again and deadlock. prevent it with hookGuard.
 				// (see test: Hook_Set_DoesntDeadlock)
-				if (!hookGuard &&
+				if (OnValueChangedCallback != null && !hookGuard &&
 						//Damntry. Use SyncDirection and ownership to decide if its allowed to be called.
 						//	Not having authority means it only receive updates, and must execute the callback.
-						networkBehaviourContainer != null && !networkBehaviourContainer.authority) {
+						networkBehaviourContainer && !networkBehaviourContainer.authority) {
 					hookGuard = true;
 					InvokeCallback(old, value);
 					hookGuard = false;
@@ -112,10 +115,17 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.SyncVar {
 		bool hookGuard;
 
 		/// <summary>
-		/// The SyncVar will automatically set its value to this defaultValue when starting an online session.
-		/// Should be the equivalent of a Vanilla game value, or one that disables the modded functionality.
+		/// Indicates if the variable is actively network synced.
 		/// </summary>
-		public T DefaultValue { get; private set; }
+        public bool IsSynced =>
+			NetworkClient.active && networkBehaviourContainer && networkBehaviourContainer.netId != 0;
+
+
+        /// <summary>
+        /// The SyncVar will automatically set its value to this defaultValue when starting an online session.
+        /// Should be the equivalent of a Vanilla game value, or one that disables the modded functionality.
+        /// </summary>
+        public T DefaultValue { get; private set; }
 
 
 		public override void ClearChanges() { }
@@ -129,8 +139,9 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.SyncVar {
 		/// remote connection, but they dont have the mod installed, which results in this 
 		/// SyncVar keeping its previous value and causing unintended consequences.
 		/// </summary>
-		public virtual void SetToDefaultValue() {
-			NetworkSpawnManager.DebugLog(() => $"Setting SyncVar from {_Value} to its DefaultValue {DefaultValue}");
+		public virtual void SetToDefaultValue(Type declaringType, string syncVarName) {
+			NetworkSpawnManager.DebugLog(() => $"Setting SyncVar '{declaringType.Name}.{syncVarName}' " +
+				$"from {_Value} to its DefaultValue {DefaultValue}");
 			_Value = DefaultValue;
 		}
 
@@ -181,7 +192,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.SyncVar {
 		/// whole automatic SyncVar initialization process to do it yourself.
 		/// </summary>
 		/// <param name="netBehaviour">
-		/// The <see cref="NetworkBehaviour"/> instance from where the SyncVar is being initialized.
+		/// The <see cref="NetworkBehaviour"/> Instance from where the SyncVar is being initialized.
 		/// </param>
 		/// <param name="value">The initial value for the SyncVar.</param>
 		/// <param name="defaultValue">
@@ -214,7 +225,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.SyncVar {
 		/// whole automatic SyncVar initialization process to do it yourself.
 		/// </summary>
 		/// <param name="netBehaviour">
-		/// The <see cref="NetworkBehaviour"/> instance from where the SyncVar is being initialized.
+		/// The <see cref="NetworkBehaviour"/> Instance from where the SyncVar is being initialized.
 		/// </param>
 		/// <param name="value">The initial value for the SyncVar.</param>
 		/// <param name="defaultValue">
@@ -244,7 +255,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.SyncVar {
 			}
 
 			if (netBehaviour != null) {
-				InitSyncObjectReflection(netBehaviour);
+				InitSyncObjectReflection(netBehaviour, true);
 			}
 		}
 
@@ -301,26 +312,30 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.SyncVar {
 		}
 
 		/// <summary>
-		/// Only intended to be used for making the SyncVar netowrk ready manually. 
+		/// Intended use of this is to manually make the SyncVar network ready. 
 		/// </summary>
 		/// <param name="netBehaviour">The NetworkBehaviour the SyncVar will be attached to.</param>
 		public virtual void InitializeSyncObject(NetworkBehaviour netBehaviour) {
 			//Never add in this method any code intended to be always executed with
 			//	InitSyncObjectReflection, or derived methods wont use it.
-			InitSyncObjectReflection(netBehaviour);
+			InitSyncObjectReflection(netBehaviour, true);
 		}
 
 		/// <summary>
-		/// Performs the initialization of the SyncVar by registering it to the NetworkBehaviour instance.
+		/// Performs the initialization of the SyncVar by registering it to the NetworkBehaviour Instance.
 		/// </summary>
 		/// <param name="netBehaviour"></param>
-		protected void InitSyncObjectReflection(NetworkBehaviour netBehaviour) {
+		protected void InitSyncObjectReflection(NetworkBehaviour netBehaviour, bool markAsSynced) {
 			networkBehaviourContainer = netBehaviour;
 			NetworkSpawnManager.DebugLog(() => $"Initializing SyncVar of Value type {typeof(T).Name} in {netBehaviour.name}");
 
 			ReflectionHelper.CallMethod(netBehaviour, "InitSyncObject", [this]);
 
 			NetworkSpawnManager.DebugLog(() => $"Finished initializing SyncVar of Value type {typeof(T).Name} in {netBehaviour.name}");
+
+			if (markAsSynced) {
+				OnFinishSyncing?.Invoke();
+			}
 		}
 
 
@@ -345,18 +360,18 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.SyncVar {
 		public override void OnDeserializeAll(NetworkReader reader) => SetValue(reader.Read<T>(), false);
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public override void OnDeserializeDelta(NetworkReader reader) => SetValue(reader.Read<T>(), false);
+        public override void OnDeserializeDelta(NetworkReader reader) => SetValue(reader.Read<T>(), false);
 
 
-		// IEquatable should compare Value.
-		// SyncVar<T> should act invisibly like [SyncVar] before.
-		// this way we can do SyncVar<int> health == 0 etc.
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        // IEquatable should compare Value.
+        // SyncVar<T> should act invisibly like [SyncVar] before.
+        // this way we can do SyncVar<int> health == 0 etc.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public bool Equals(T other) =>
 			// from NetworkBehaviour.SyncVarEquals:
 			// EqualityComparer method avoids allocations.
 			// otherwise <T> would have to be :IEquatable (not all structs are)
-			EqualityComparer<T>.Default.Equals(Value, other);
+			EqualityComparer<T>.Default.Equals(_Value, other);
 
 		// ToString should show Value.
 		// SyncVar<T> should act invisibly like [SyncVar] before.

@@ -8,7 +8,7 @@
 	/// 
 	/// Usage:
 	/// This class template has to be copied inside the plugin's project and referenced by its code directly.
-	/// make a new instance, assign any fields that you want to override, and pass it as a tag for your setting.
+	/// make a new Instance, assign any fields that you want to override, and pass it as a tag for your setting.
 	/// 
 	/// If a field is null (default), it will be ignored and won't change how the setting is displayed.
 	/// If a field is non-null (you assigned a value to it), it will override default behavior.
@@ -100,7 +100,7 @@
 		/// </param>
 		/// <param name="isCurrentlyAcceptingInput">
 		/// Set this ref parameter to true when you want the current setting drawer to receive Input events.
-		/// The value will persist after being set, use it to see if the current instance is being edited.
+		/// The value will persist after being set, use it to see if the current Instance is being edited.
 		/// Remember to set it to false after you are done!
 		/// </param>
 		public delegate void CustomHotkeyDrawerFunc(BepInEx.Configuration.ConfigEntryBase setting, ref bool isCurrentlyAcceptingInput);
@@ -111,7 +111,7 @@
 		public bool? Browsable;
 
 		/// <summary>
-		/// Category the setting is under. Null to be directly under the plugin.
+		/// HotkeyContext the setting is under. Null to be directly under the plugin.
 		/// </summary>
 		public string Category;
 

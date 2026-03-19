@@ -1,6 +1,4 @@
-﻿using System;
-using System.Reflection;
-using BepInEx;
+﻿using BepInEx;
 using BepInEx.Configuration;
 using Damntry.Utils.Logging;
 using Damntry.Utils.Reflection;
@@ -8,6 +6,9 @@ using Damntry.UtilsBepInEx.Configuration.ConfigurationManager.Patch;
 using Damntry.UtilsBepInEx.Configuration.ConfigurationManager.SettingAttributes;
 using Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces;
 using HarmonyLib;
+using System;
+using System.Collections.Generic;
+using System.Reflection;
 
 namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 
@@ -44,10 +45,13 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 
 		internal const string ConfigMngFullTypeName = "ConfigurationManager.ConfigurationManager";
 
-		private const string InstallSideInitialDescription = "[Multiplayer requirements] " +
+        private const string InstallSideInitialDescription = "[Multiplayer requirements] " +
 			"This setting requires that the mod ";
 
-		private ConfigFile configFile;
+        private const string UnusedSettingText = "# Old unused setting, can be deleted safely:  ";
+
+
+        private ConfigFile configFile;
 
 		private string currentSectionName;
 
@@ -73,7 +77,7 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 			//Check that the ConfigurationManager plugin is installed.
 			bool configManagerLoaded = AssemblyUtils.GetTypeFromLoadedAssemblies(ConfigMngFullTypeName) != null;
 			if (configManagerLoaded) {
-				//Enable patch to get an instance of the ConfigurationManager object in the assembly.
+				//Enable patch to get an Instance of the ConfigurationManager object in the assembly.
 				ConfigurationManagerPatch.PatchSelf();
 			}
 			ConfigEntryBasePatch.PatchSelf();
@@ -115,7 +119,7 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 					ReflectionHelper.CallMethod(ConfigurationManagerPatch.ConfigMngInstance, refreshMethodName);
 					return true;
 				} catch (Exception e) {
-					TimeLogger.Logger.LogTimeExceptionWithMessage($"Error when trying to call the method to refresh ConfigurationManager GUI.", e, Utils.Logging.LogCategories.Config);
+					TimeLogger.Logger.LogExceptionWithMessage($"Error when trying to call the method to refresh ConfigurationManager GUI.", e, LogCategories.Config);
 				}
 			}
 			return false;
@@ -252,7 +256,7 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 		/// Here you can expand on the setting functionality and possible caveats.
 		/// </param>
 		/// <param name="patchInstanceDependency">
-		/// Makes a setting dependent on a patch instance being active. Settings using this functionality are set to hidden, and when
+		/// Makes a setting dependent on a patch Instance being active. Settings using this functionality are set to hidden, and when
 		/// this Instance patching attempt is completed and the patch is successfully active, the setting is shown.
 		/// </param>
 		/// <param name="modInstallSide">
@@ -309,7 +313,74 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager {
 			return configEntry;
 		}
 
-		public bool Remove(string section, string key) {
+		/// <summary>
+		/// Retrieves all settings that dont have yet any binding associated, and renames their Key text to
+		/// comment them out with an added text, warning that the setting is outdated. Then it saves them to disk.
+		/// </summary>
+		/// <remarks>
+		/// This method must be called after no more setting binding will occur. 
+		/// Any settings binded after this method will be lost on next restart.
+		/// </remarks>
+        public void RenameOrphanedSettings() {
+			try {
+				string fieldName = GetBackingFieldName("OrphanedEntries");
+
+				FieldInfo orphanFieldInfo = AccessTools.Field(configFile.GetType(), fieldName);
+				if (orphanFieldInfo == null) {
+					TimeLogger.Logger.LogWarning($"The field '{fieldName}' could not be " +
+						$"found in type {configFile.GetType()}", LogCategories.Config);
+					return;
+				}
+
+				IDictionary<ConfigDefinition, string> orphanedEntries =
+					(IDictionary<ConfigDefinition, string>)orphanFieldInfo.GetValue(configFile);
+
+				if (orphanedEntries == null) {
+					return;
+				}
+
+				string renamedKeys = "";
+				bool isKeyRenamed = false;
+
+				foreach (var entry in orphanedEntries) {
+					if (entry.Key.Key.StartsWith(UnusedSettingText)) {
+						continue;
+					}
+
+                    if (!string.IsNullOrEmpty(renamedKeys)) {
+                        renamedKeys += " || ";
+                    }
+                    renamedKeys += "\"" + entry.Key.Key + "\"";
+
+                    RenameSettingKeyname(entry.Key);
+					isKeyRenamed = true;
+                }
+
+				if (isKeyRenamed) {
+					configFile.Save();
+
+					TimeLogger.Logger.LogDebug("Some config keys were found to be obsolete: " +
+						$"{renamedKeys}. They got renamed to make clear that they are of no use anymore.", 
+						LogCategories.Config);
+				}
+			} catch (Exception e) {
+                TimeLogger.Logger.LogExceptionWithMessage("Error while trying to rename " +
+					"orphaned Bepinex config settings.", e, LogCategories.Config);
+            }
+        }
+
+		private void RenameSettingKeyname(ConfigDefinition key) {
+			FieldInfo keyField = AccessTools.Field(key.GetType(), GetBackingFieldName("Key"));
+            keyField.SetValue(key, UnusedSettingText + key.Key);
+		}
+
+        /// <summary>
+		/// This is a shitty-ass way of doing this, and unsafe. Only use it for unimportant stuff.
+		/// </summary>
+		/// <remarks>UNSAFE</remarks>
+        public string GetBackingFieldName(string varName) => $"<{varName}>k__BackingField";
+
+        public bool Remove(string section, string key) {
 			return configFile.Remove(new ConfigDefinition(section, key));
 		}
 

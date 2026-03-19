@@ -17,13 +17,13 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses.Inherita
 	/// Simplifies patching logic by implementing the auto patching methods and automating some of the
 	/// state logic, with the disadvantage of only working through auto patching with no possibility of manual patching.
 	/// If manual patching is also necessary, inherit instead from the class <see cref="ExtendedInstancedFullAutoPatch"/>.
-	/// The derived class acts itself as an "instance", in the sense of it being  an independent 
+	/// The derived class acts itself as an "Instance", in the sense of it being  an independent 
 	/// object in itself, that can also be accessed from the outside as an hybrid Singleton.
 	/// It is meant to be used to encapsulate multiple Harmony patches in a single class that, as a 
 	/// whole, works to implement a specific functionality.
 	/// There shouldnt be much functionality in the class itself other than patches. Otherwise, it is 
 	/// recommended to move them to a static helper class.
-	/// Any already applied patches of this instance, will automatically revert when a subsequent patch errors out,
+	/// Any already applied patches of this Instance, will automatically revert when a subsequent patch errors out,
 	/// but this can be changed by overriding <see cref="IsRollbackOnAutoPatchFail"/>.
 	/// </summary>
 	/// <typeparam name="T">

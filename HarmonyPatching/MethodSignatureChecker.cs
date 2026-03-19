@@ -250,11 +250,11 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 
 			//Overwrite existing signatures, but only if there was no error. Otherwise we want 
 			//	next launch to keep warning about different signatures until dealt with manually.
-			if (checkResult.Result != SignatureCheckResult.SignaturesDifferent) {
+			if (checkResult.ResultType != SignatureCheckResult.SignaturesDifferent) {
 				SaveSignaturesToFile(currentMethodSignatures);
 			}
 
-			if (checkResult.Result == SignatureCheckResult.Started) {
+			if (checkResult.ResultType == SignatureCheckResult.Started) {
 				throw new InvalidOperationException("Something went wrong. Method check finished with result \"Started\".");
 			}
 
@@ -324,13 +324,13 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 					MethodSignature mSigNew = methodSigPair.Value;
 
 					if (mSigOld != null && !mSigOld.Equals(mSigNew, out string errorDetail)) {
-						checkResult.Result = SignatureCheckResult.SignaturesDifferent;
+						checkResult.ResultType = SignatureCheckResult.SignaturesDifferent;
 						checkResult.AddErrorMessage($"{errorDetail} | {methodSigPair.Key}");
 					}
 				}
 			}
 
-			if (checkResult.Result != SignatureCheckResult.SignaturesDifferent) {
+			if (checkResult.ResultType != SignatureCheckResult.SignaturesDifferent) {
 				checkResult.SetValues(SignatureCheckResult.SignaturesOk, "Method signature check ok.");
 			}
 		}
@@ -549,19 +549,11 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		);
 
 
-		public SignatureCheckResult Result { get; internal set; }
+		public SignatureCheckResult ResultType { get; internal set; }
 
-		private string _result;
+        public string ResultMessage { get; private set; } = "";
+        public string DetailMessage { get; private set; } = "";
 
-		public string ResultMessage {
-			get { return _result; }
-			private set {
-				if (value == null) {
-					_result = "";
-				}
-				_result = value;
-			}
-		}
 
 		public enum SignatureCheckResult {
 			Unchecked,
@@ -574,43 +566,47 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 		}
 
 		internal CheckResult() {
-			ResultMessage = "";
-			Result = SignatureCheckResult.Unchecked;
+            ResultType = SignatureCheckResult.Unchecked;
 		}
 
 		internal CheckResult(SignatureCheckResult result, string resultMessage) {
-			ResultMessage = resultMessage;
-			Result = result;
+            ResultMessage = resultMessage;
+			ResultType = result;
 		}
 
 		internal CheckResult SetValues(SignatureCheckResult result, string resultMessage) {
 			ResultMessage = resultMessage;
-			Result = result;
+			ResultType = result;
 			return this;
 		}
 
 		internal void AddErrorMessage(string resultMessage) {
 			if (string.IsNullOrEmpty(ResultMessage)) {
-				ResultMessage = $"Method signatures have changed since last successful check:";
+				ResultMessage = $"Method signatures have changed since last successful check";
 			}
-			ResultMessage += $"\n{resultMessage}";
+            DetailMessage += $"\n{resultMessage}";
 		}
 
 		/// <summary>
-		/// If a message exists, logs it and optionally shows it in-game.
+		/// If a logMessage exists, logs it and optionally shows it in-game.
 		/// </summary>
 		/// <param name="logLevel">FileLogging level.</param>
 		/// <param name="onlyWhenNotOk">Only logs if the result was some kind of problem we should be aware of.</param>
 		/// <param name="showInGame">If it should show in-game too.</param>
 		public void LogResultMessage(LogTier logLevel, bool onlyWhenNotOk, bool showInGame) {
 			if (ShouldLogMessage(onlyWhenNotOk)) {
-				TimeLogger.Logger.LogTime(logLevel, ResultMessage, LogCategories.MethodChk, showInGame);
-			}
+				string logMessage = ResultMessage;
+				if (ResultType == SignatureCheckResult.SignaturesDifferent) {
+					logMessage += ":" + DetailMessage;
+				}
+				TimeLogger.Logger.Log(logLevel, logMessage, LogCategories.MethodChk);
+				TimeLogger.Logger.SendMessageNotificationError(ResultMessage, false);
+            }
 		}
 
 		private bool ShouldLogMessage(bool onlyWhenNotOk) {
 			if (string.IsNullOrEmpty(ResultMessage)) {
-				if (Result == SignatureCheckResult.Unchecked) {
+				if (ResultType == SignatureCheckResult.Unchecked) {
 					return false;
 				} else {
 					//This shouldnt happen.
@@ -619,7 +615,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 				}
 			}
 
-			if (onlyWhenNotOk && (Result == SignatureCheckResult.SignaturesOk || Result == SignatureCheckResult.NoPreviousSignatures)) {
+			if (onlyWhenNotOk && (ResultType == SignatureCheckResult.SignaturesOk || ResultType == SignatureCheckResult.NoPreviousSignatures)) {
 				return false;
 			}
 

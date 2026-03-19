@@ -12,7 +12,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses {
 
 	/// <summary>
 	/// Provides base functionality for class patching.
-	/// The derived class acts itself as an "instance", in the sense of it being 
+	/// The derived class acts itself as an "Instance", in the sense of it being 
 	/// an independent object in itself, that can also be accessed from the outside
 	/// as an hybrid Singleton (hybrid due the constructor being accessible to allow inheritance).
 	/// It is meant to be used to encapsulate multiple patches in a single class that, as a whole,
@@ -29,13 +29,13 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses {
 	/// </typeparam>
 	public abstract class AutoPatchedInstanceBase : IAutoPatchSupport, IConfigPatchDependence {
 
-		// Short explanation of the old instance system, so I dont forget why I changed:
+		// Short explanation of the old Instance system, so I dont forget why I changed:
 		//
 		// Since BepInEx patch methods must be static, but by design my inherited methods from the base classes 
 		// are not, at the start I decided to go for a simple system of patch classes that have their own public 
-		// static property, that holds an instance of themselves.
+		// static property, that holds an Instance of themselves.
 		// To not have to implement a Singleton manually on each patch class, I made a semi Singleton pattern in
-		// this class so the derived class can access its instance, and through it, all its base class logic.
+		// this class so the derived class can access its Instance, and through it, all its base class logic.
 		// 
 		// But this needed that the derived class passes its own Type to the base class through T while inheriting,
 		// otherwise there is no way right now of using generics to return the exact type at compile time.
@@ -85,7 +85,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses {
 
 
 		/// <summary>
-		/// Makes a setting dependent on a patch instance being active. By default, settings using this functionality are hidden until 
+		/// Makes a setting dependent on a patch Instance being active. By default, settings using this functionality are hidden until 
 		/// this Instance patching attempt is completed, the setting is shown only in ConfigurationManager if the patch was successful and currently active.
 		/// </summary>
 		/// <typeparam name="T"></typeparam>

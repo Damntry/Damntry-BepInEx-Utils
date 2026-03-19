@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using System;
+﻿using System;
 using Damntry.Utils.Logging;
 using Mirror;
 using UnityEngine;
@@ -12,20 +11,25 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 		Type NetworkBehaviourType { get; }
 		
 		uint DefinedAssetId { get; }
-
 		/// <summary>
-		/// Registers the NetworkSpawner behaviour into the predefined RootNetworkTransform, 
-		/// in preparation for its later spawning.
+		/// If true, the prefab will be spawned manually after Mirror does so with all scene objects.
+		/// False is meant to be used when you are going to spawn it manually, or the prefab is added
+		/// to an existing scene object before scene spawning, so mirror already takes care of it.
 		/// </summary>
-		void AddToPrefabs();
+        bool IsSelfManagedSpawning { get; }
 
-		/// <summary>
-		/// Spawns and activates the entity in the network server. Usually called when hosting starts.
-		/// </summary>
-		void Spawn();
+        /// <summary>
+        /// Registers the NetworkSpawner behaviour into the predefined RootNetworkTransform, 
+        /// in preparation for its later spawning.
+        /// </summary>
+        void AddToPrefabs();
 
+        /// <summary>
+        /// Spawns and activates the entity in the network server. Usually called when hosting starts.
+        /// </summary>
+        void Spawn();
 
-	}
+    }
 
 	public class NetworkPrefabSpawner<T> : INetworkPrefabSpawner
 			where T : NetworkBehaviour {
@@ -35,38 +39,48 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 		/// <summary>The user provided assetId.</summary>
 		public uint DefinedAssetId { get; init; }
 
-		public bool PrefabRegisterOk { get; private set; }
+        public bool PrefabRegisterOk { get; private set; }
+
+        public bool IsSelfManagedSpawning { get; init; }
 
 
-		public Type NetworkBehaviourType { get; private set; }
+        public Type NetworkBehaviourType { get; private set; }
 
 		private NetworkBehaviour networkBehaviourInstance;
 
 
-		public NetworkPrefabSpawner(uint assetId) {
-			NetworkBehaviourType = typeof(T);
+        public NetworkPrefabSpawner(uint assetId, bool isSelfManagedSpawning) {
+            NetworkBehaviourType = typeof(T);
 			DefinedAssetId = assetId;
-		}
+			IsSelfManagedSpawning = isSelfManagedSpawning;
+        }
 
 		public void AddToPrefabs() {
 			string typeName = NetworkBehaviourType.Name;
-			
-			prefabObj = NetworkPrefabHelper.GetNetworkReadyPrefab<T>(typeName, out networkBehaviourInstance);
 
-			if (prefabObj == null) {
-				TimeLogger.Logger.LogTimeError($"A prefab object couldnt be created from type {typeName}", 
+            prefabObj = NetworkPrefabHelper.GetNetworkReadyPrefab<T>(typeName, out networkBehaviourInstance);
+
+            if (prefabObj == null) {
+				TimeLogger.Logger.LogError($"A prefab object couldnt be created from type {typeName}", 
 					LogCategories.Network);
 				return;
 			}
 			
 			uint assetId = DefinedAssetId;
-			if (NetworkPrefabHelper.AssetIdExists(assetId)) {
-				TimeLogger.Logger.LogTimeError($"The specified assetId \"{assetId}\" for the NetworkBehaviour " +
+			if (NetworkPrefabHelper.AssetIdExistsAsPrefab(assetId)) {
+				TimeLogger.Logger.LogError($"The specified assetId \"{assetId}\" for the NetworkBehaviour " +
 					$"class {typeName} was already found in the NetworkClient.", LogCategories.Network);
 				return;
 			}
+            if (NetworkPrefabHelper.AssetIdAlreadyRegistered(assetId)) {
+                TimeLogger.Logger.LogError($"The specified assetId \"{assetId}\" for the NetworkBehaviour " +
+                    $"class {typeName} has already been registered. Its possible there is a duplicated " +
+					$"assetId in this project, or one coming from another mod, or added by the game at " +
+					$"runtime.", LogCategories.Network);
+                return;
+            }
 
-			SpawnHandlerDelegate spawnHandlerDelegate = (SpawnMessage msg) => {
+            SpawnHandlerDelegate spawnHandlerDelegate = (SpawnMessage msg) => {
 				//No need to use the message since prefabs are stored individually, for now.
 				return prefabObj;
 			};
@@ -103,17 +117,17 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 			}
 		}
 
-		public void Spawn() {
-			if (!PrefabRegisterOk) {
+        public void Spawn() {
+			if (!IsSelfManagedSpawning || !PrefabRegisterOk) {
 				return;
 			}
 			if (prefabObj == null) {
-				TimeLogger.Logger.LogTimeFatal($"The prefab object to spawn for type {NetworkBehaviourType.Name}. " +
+				TimeLogger.Logger.LogFatal($"The prefab object to spawn for type {NetworkBehaviourType.Name}. " +
 					$"is null. Make sure to call AddToPrefabs() before spawning happens.", LogCategories.Network);
 				return;
 			}
 			NetworkServer.Spawn(prefabObj);
-		}
+        }
 
 	}
 

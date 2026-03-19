@@ -33,7 +33,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 					//	method in a nested class, or a class that returns an IEnumerator and yields.
 					//	It matters little since its relatively specific and MethodBaseToMethodDefinition above
 					//	has, so far, taken care of everything.
-					TimeLogger.Logger.LogTimeDebug(TimeLogger.FormatException(ex, "Error while trying to convert " +
+					TimeLogger.Logger.LogDebug(TimeLogger.FormatException(ex, "Error while trying to convert " +
 						"MethodInfo to MethodDefinition. You can safely ignore this error if you are not the dev."),
 						LogCategories.MethodChk);
 				}
@@ -143,7 +143,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching {
 			if (mInfoInternal != null) {
 				return (MethodInfo)mInfoInternal.Invoke(null, [harmonyMethod]);
 			} else {
-				TimeLogger.Logger.LogTimeWarning("Reflection access to \"HarmonyLib.PatchTools:GetOriginalMethod\" returned " +
+				TimeLogger.Logger.LogWarning("Reflection access to \"HarmonyLib.PatchTools:GetOriginalMethod\" returned " +
 					"null. Using backup method.", LogCategories.MethodChk);
 				return AccessTools.Method(harmonyMethod.declaringType, harmonyMethod.methodName, harmonyMethod.argumentTypes);
 			}

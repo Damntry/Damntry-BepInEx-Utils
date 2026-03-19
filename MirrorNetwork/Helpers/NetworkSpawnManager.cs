@@ -10,10 +10,10 @@ using Mirror;
 
 namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 
-	//TODO Global 4 - Optionally pass Scenes (by id? name? ...) to the RegisterNetwork method, for the 
-	//	AddNetworkSpawns method to filter out or in the NetworkBehaviour.
+    //TODO Global 4 - Optionally pass Scenes (by id? name? ...) to the RegisterNetwork method, for the 
+    //	AddNetworkSpawns method to filter out or in the NetworkBehaviour.
 
-	/*  
+    /*  
 
 	Introduction
 
@@ -115,8 +115,8 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 		Most basic C# types works. For a list of supported types, there should be a file named
 		"GeneratedNetworkCode.cs" in the Assembly-CSharp.dll of the project you are modding. 
 		Look for the method InitReadWriters(), it will contain the types supported in that game.
-		I ve coded in support for Enums, but for any other types not already supported, you would
-		have to create your own Writer/Read implementation. 
+		I ve coded in support for Enums (SyncVar.RegisterCustomEnum, uses boxing though), but for any other types not already 
+		supported, you would have to create your own Writer/Read implementation. 
 		In normal cases, Mirror Weaver would automatically generate a complete GeneratedNetworkCode.cs
 		file from the Unity editor, but this is not possible outside of it.
 		More info here: https://mirror-networking.gitbook.io/docs/manual/guides/serialization
@@ -181,7 +181,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 
  */
 
-	public enum NetworkMode {
+    public enum NetworkMode {
 		NotInitialized,
 		Offline,
 		ServerOnly,
@@ -190,7 +190,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 	}
 
 	[HarmonyPatch]
-	public class NetworkSpawnManager {
+	public static class NetworkSpawnManager {
 
 		private readonly static Harmony harmony;
 
@@ -199,6 +199,9 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 		private static uint _assetIdSignature;
 
 		public static bool NetworkDebugLog = true;
+
+
+		public static event Action OnBeforeObjectSpawn;
 
 		static NetworkSpawnManager() {
 			harmony = new(typeof(NetworkSpawnManager).FullName);
@@ -235,16 +238,16 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 				};
 
 
-		/// <summary>
-		/// Initializes the spawner manager. finished loading.
-		/// </summary>
-		/// <param name="assetIdSignature">
-		/// The beginning numbers of all generated AssetIds in this mod.
-		/// This number must be a value between 1 and 4293, both inclusive, so it can fit within an uint.
-		/// </param>
-		public static void Initialize(int assetIdSignature) {
+        /// <summary>
+        /// Initializes the spawner manager.
+        /// </summary>
+        /// <param name="assetIdSignature">
+        /// The beginning numbers of all generated AssetIds in this mod.
+        /// This number must be a value between 1 and 4293, both inclusive, so it can fit within an uint.
+        /// </param>
+        public static void Initialize(int assetIdSignature) {
 			if (assetIdSignature < 1 || assetIdSignature > 4293) {
-				TimeLogger.Logger.LogTimeFatal($"The value of assetIdSignature is {assetIdSignature} " +
+				TimeLogger.Logger.LogFatal($"The value of assetIdSignature is {assetIdSignature} " +
 					$"but it must be between 1 and 4293, both inclusive. " +
 					"All related network functionality will not work.", LogCategories.Network);
 				return;
@@ -255,37 +258,39 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 			harmony.PatchAll(typeof(NetworkSpawnManager));
 
 			if (!harmony.GetPatchedMethods().Any()) {
-				TimeLogger.Logger.LogTimeFatal("NetworkSpawnManager patch failed. Modded network features wont work.", LogCategories.Network);
+				TimeLogger.Logger.LogFatal("NetworkSpawnManager patch failed. Modded network features wont work.", LogCategories.Network);
 			}
 		}
 
-		//Hook after objects have been spawned or registered, so we give preference to existing assetIds, if any.
-		[HarmonyPatch(typeof(NetworkServer), nameof(NetworkServer.SpawnObjects))]
+        //Hook after objects have been spawned or registered, so we give preference to existing assetIds, if any.
+        [HarmonyPatch(typeof(NetworkServer), nameof(NetworkServer.SpawnObjects))]
 		[HarmonyPatch(typeof(NetworkClient), nameof(NetworkClient.PrepareToSpawnSceneObjects))]
 		[HarmonyPostfix]
-		public static void OnStartNetworkSessionPrefix(MethodBase __originalMethod) {
-			DebugLog(() => $"OnStartNetworkSessionPrefix - Coming from method " +
+		public static void OnStartNetworkSessionPostfix(MethodBase __originalMethod) {
+			DebugLog(() => $"OnStartNetworkSessionPostfix - Coming from method " +
 				$"{__originalMethod.Name} - Network mode: {NetworkManager.singleton.mode}");
 
-			if (IsNetworkActive()) {
+            if (IsNetworkActive()) {
 				DebugLog("Mirror network system is active. Adding network spawns");
-				AddNetworkSpawns();
+                OnBeforeObjectSpawn?.Invoke();
+                AddNetworkSpawns();
 			} else {
 				DebugLog("Mirror network system is NOT active. Skipping this session initialization");
 			}
 		}
 
-		/// <summary>
-		/// Registers the NetworkBehaviour to be added and spawned in the network.
-		/// It is recommended to use a <see cref="SyncVarNetworkBehaviour{T}"/> to
-		/// automate most of the manual work, but a normal NetworkBehaviour works too.
-		/// </summary>
-		/// <typeparam name="T">The type of NetworkBehaviour</typeparam>
-		/// <param name="assetId">
-		/// The unique assetId for this networkBehaviour. Must be > 0 and have less than 7 digits [1 to 999999].
-		/// </param>
-		/// <exception cref="InvalidOperationException">Thrown when a duplicated NetworkBehaviour is added.</exception>
-		public static void RegisterNetwork<T>(uint assetId)
+
+        /// <summary>
+        /// Registers the NetworkBehaviour to be added and spawned in the network.
+        /// It is recommended to use a <see cref="SyncVarNetworkBehaviour{T}"/> to
+        /// automate most of the manual work, but a normal NetworkBehaviour works too.
+        /// </summary>
+        /// <typeparam name="T">The type of NetworkBehaviour</typeparam>
+        /// <param name="assetId">
+        /// The unique assetId for this networkBehaviour. Must be > 0 and have less than 7 digits [1 to 999999].
+        /// </param>
+        /// <exception cref="InvalidOperationException">Thrown when a duplicated NetworkBehaviour is added.</exception>
+        public static void RegisterNetwork<T>(uint assetId, bool isSelfManagedSpawning = true)
 				where T : NetworkBehaviour {
 
 			if (assetId == 0) {
@@ -295,13 +300,14 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 				throw new ArgumentException("The assetId parameter must have less than 7 digits [1 to 999999].");
 			}
 			Type netBehaviourType = typeof(T);
+			
 			if (networkBehaviourRegistry.ContainsKey(netBehaviourType)){
 				throw new InvalidOperationException($"The NetworkBehaviour of type {netBehaviourType.Name} " +
 					$"was already registered.");
 			}
 
 			uint fullAssetId = GetAssetIdFromSignature(assetId);
-			var netSpawner = new NetworkPrefabSpawner<T>(fullAssetId);
+			var netSpawner = new NetworkPrefabSpawner<T>(fullAssetId, isSelfManagedSpawning);
 
 			networkBehaviourRegistry.Add(netBehaviourType, netSpawner);
 		}
@@ -349,17 +355,19 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Helpers {
 			}
 
 			if (NetworkServer.active) {
-				SpawnHost();
+				BeginHostSpawning();
 			}
 		}
 
-		private static void SpawnHost() {
+		private static void BeginHostSpawning() {
 			NetworkSpawnManager.DebugLog(() => $"Spawning objects - NetworkServer active? {NetworkServer.active}");
-			if (NetworkServer.active) {
-				//Mirror will replicate it onto the client/s.
-				foreach (KeyValuePair<Type, INetworkPrefabSpawner> keyValue in networkBehaviourRegistry) {
-					keyValue.Value.Spawn();
-				}
+			if (!NetworkServer.active) {
+				return;
+			}
+
+			//Mirror will replicate it onto the client/s.
+			foreach (KeyValuePair<Type, INetworkPrefabSpawner> keyValue in networkBehaviourRegistry) {
+				keyValue.Value.Spawn();
 			}
 		}
 

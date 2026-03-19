@@ -9,7 +9,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.Helpers {
 	//	to refer the argument you want with a constant or something like that, see if I can use templating
 	//	to add new attributes right here in this class. Maybe there is a way of having a cs class with snippets of
 	//	templating? Otherwise make this class abstract, and a new template file will set a new class to derive it
-	//	and create the arguments and instance so it generates the class that will be used to refer to the arguments.
+	//	and create the arguments and Instance so it generates the class that will be used to refer to the arguments.
 	//
 	//	Also make sure that the templating auto generates when building, and not just when saving. I remember seeing that somewhere.
 
@@ -28,13 +28,13 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.Helpers {
 		public T Value { get; set; }
 
 		/// <summary>
-		/// Instruction to load into the stack this own instance, to later use its Getter.. or Setter.. methods.
+		/// Instruction to load into the stack this own Instance, to later use its Getter.. or Setter.. methods.
 		/// </summary>
 		public CodeInstruction LoadFieldArgHelper_IL { get; private set; }
 
 		/// <summary>
 		/// Method call to the property getter of this argument value.
-		/// Expected stack (NOT PROVIDED): Consumes a field in the stack holding this ArgumentHelper instance.
+		/// Expected stack (NOT PROVIDED): Consumes a field in the stack holding this ArgumentHelper Instance.
 		/// Then puts its value in the stack.
 		/// </summary>
 		public CodeInstruction GetterValue_IL { get; private set; }
@@ -42,18 +42,18 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.Helpers {
 		/// <summary>
 		/// Method call to the property setter of this argument value.
 		/// Expected stack (NOT PROVIDED): Consumes the current value on the stack to set the value, and then consumes
-		/// a field in the stack holding this ArgumentHelper instance.
+		/// a field in the stack holding this ArgumentHelper Instance.
 		/// </summary>
 		public CodeInstruction SetterValue_IL { get; private set; }
 
 
 		/// <param name="declaringClassType">The class where this ArgumentHelper is being declared.</param>
-		/// <param name="instanceName">Name of the instance of this ArgumentHelper.</param>
+		/// <param name="instanceName">Name of the Instance of this ArgumentHelper.</param>
 		/// <param name="argumentValue">Value asigned</param>
 		public ArgumentHelper(Type declaringClassType, string instanceName, T argumentValue) {
 			Value = argumentValue;
 
-			//Create instruction to load this instance into the stack.
+			//Create instruction to load this Instance into the stack.
 			FieldInfo OwnInstanceFieldInfo = AccessTools.Field(declaringClassType, instanceName);
 			if (OwnInstanceFieldInfo == null) {
 				throw new InvalidOperationException($"No field was found in the type {declaringClassType} with name {instanceName}.");

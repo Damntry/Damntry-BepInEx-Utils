@@ -7,8 +7,8 @@ using Mirror;
 namespace Damntry.UtilsBepInEx.MirrorNetwork.SyncVar {
 
 	/// <summary>
-	/// Synced variable between host and clients. While in a game, setting 
-	/// the value will only apply when hosting. Otherwise it does nothing.
+	/// Synced variable between host and clients. While in a game, changing 
+	/// the value will only work when hosting.
 	/// </summary>
 	/// <typeparam name="T">The type that holds the value.</typeparam>
 	public class SyncVarSetting<T> : SyncVar<T>, ISyncVar {
@@ -84,27 +84,34 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.SyncVar {
 			ConfigEntry.SettingChanged -= SetValueFromConfig;
 		}
 
-		/// <summary>
-		/// Only intended to be used for making the SyncVar netowrk ready manually. 
-		/// </summary>
-		/// <param name="netBehaviour">The NetworkBehaviour the SyncVar will be attached to.</param>
-		public override void InitializeSyncObject(NetworkBehaviour netBehaviour) {
-			InitSyncObjectReflection(netBehaviour);
+        /// <summary>
+        /// Intended use of this is to manually make the SyncVar network ready. 
+        /// </summary>
+        /// <param name="netBehaviour">The NetworkBehaviour the SyncVar will be attached to.</param>
+        public override void InitializeSyncObject(NetworkBehaviour netBehaviour) {
+			InitSyncObjectReflection(netBehaviour, false);
 
 			NetworkSpawnManager.DebugLog(() => $"{nameof(SyncVarSetting<object>)} fully initialized. " +
 				$"Setting SyncVar from {_Value} to its configEntry value ({ConfigEntry.Value}).");
-			SetValueFromConfig();
-		}
+
+            SetValueFromConfig();
+
+			OnFinishSyncing?.Invoke();
+        }
 
 		private void SetValueFromConfig(object sender, EventArgs e) => SetValueFromConfig();
 
 		/// <summary>
 		/// Sets the value of the SyncVar to the current one from its <see cref="ConfigEntry{T}"/> 
 		/// </summary>
-		public void SetValueFromConfig() => Value = ConfigEntry.Value;
+		public void SetValueFromConfig() {
+			if (NetworkServer.active) {
+                Value = ConfigEntry.Value;
+            }
+		}
 
 
-		// implicit conversion: int value = SyncVarSetting<T>
+		// implicit conversion: T value = SyncVarSetting<T>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static implicit operator T(SyncVarSetting<T> field) => field.Value;
 

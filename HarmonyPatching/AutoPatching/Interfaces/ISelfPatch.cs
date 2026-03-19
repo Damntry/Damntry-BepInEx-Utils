@@ -21,7 +21,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.Interfaces {
 		bool IsPatchActive { get; }
 
 		/// <summary>
-		/// Raised after patching has been attempted for this instance, regardless of the result. 
+		/// Raised after patching has been attempted for this Instance, regardless of the result. 
 		/// The bool parameter indicates if the patch was successfully activated.
 		/// </summary>
 		event Action<bool> OnPatchFinished;

@@ -13,7 +13,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 		}
 	}
 
-	internal static class AutoPatchContainer {
+    internal static class AutoPatchContainer {
 
 
 		private static Dictionary<Type, AutoPatchedInstanceBase> registeredInstances = new();
@@ -48,7 +48,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 			ThrowIfTypeInvalidOrNotRegistered(autoPatchClass);
 
 			//TODO Global 4 - Implement Dispose on AutoPatchedInstanceBase, and call it here before removal.
-			//		It has to unpatch the instance, null statics and so on.
+			//		It has to unpatch the Instance, null statics and so on.
 			registeredInstances.Remove(autoPatchClass);
 		}
 

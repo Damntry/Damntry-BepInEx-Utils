@@ -16,13 +16,13 @@ using Mirror;
 
 namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 
-	internal interface ISyncVarBehaviour {
+	public interface ISyncVarBehaviour {
 
 		void StartNetworkSession(NetworkMode networkMode);
 
 	}
 
-	//TODO 0 Network - Change name of this. Its no longer just for SyncVars, but also CMDs and RPCs
+	//TODO 1 Network - Change name of this. Its no longer just for SyncVars, but also CMDs and RPCs
 	/// <summary>
 	/// Primarily meant to be used to automatically initialize <see cref="SyncVar{T}"/> objects 
 	/// annotated with the attribute <see cref="SyncVarNetworkAttribute"/>
@@ -31,12 +31,12 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 	public abstract class SyncVarNetworkBehaviour<T> : NetworkBehaviour, ISyncVarBehaviour
 			where T : SyncVarNetworkBehaviour<T> {
 
-		//TODO 0 Network - Out of curiosity, do a quick test and see if the annotated function having a
+		//TODO 1 Network - Out of curiosity, do a quick test and see if the annotated function having a
 		//	return object works (it shouldnt). See how easy it would be to fix, or otherwise just check for it
 		//	and throw an exception.
 
 		//TODO Global 6 - If I host with a mod using this, and a client joins without the mod, everything
-		//	works on the host side, but the client receives isValid in the console when the host calls
+		//	works on the host side, but the client receives an error in the console when the host calls
 		//	Spawn(), since it doesnt know what to do with that data.
 		//	The error doesnt cause any issues in itself.
 		//	No idea how to fix this now outside of patching Mirror to control who receives certain data,
@@ -56,7 +56,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 
 
 
-		private const bool IS_DEBUG_NETWORK_TESTS__ENABLED = false;
+		private static readonly bool IS_DEBUG_NETWORK_TESTS__ENABLED = false;
 
 
 
@@ -79,12 +79,18 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 		/// </summary>
 		protected virtual void OnSyncVarsNetworkReady() { }
 
+        /// <summary>
+        /// Logic that Mirror uses to generate the hashcode it uses to correlate method delegates.
+        /// In RemoteProcedureCalls.RegisterDelegate(...).
+        /// </summary>
+        protected static ushort GetMirrorMethodHashCode(string methodName) =>
+			(ushort)((uint)methodName.GetStableHashCode() & 0xFFFFu);
 
 		/// <summary>
 		/// A new network session has been started, and Mirror objects were already spawned.
 		/// All valid SyncVars are validated to be used later.
 		/// </summary>
-		void ISyncVarBehaviour.StartNetworkSession(NetworkMode networkMode) {
+		public void StartNetworkSession(NetworkMode networkMode) {
 			NetworkSpawnManager.DebugLog(() => $"{nameof(OnStartNetworkSession)} call begins for type {derivedType.Name}.");
 
 			OnStartNetworkSession(networkMode);
@@ -101,11 +107,11 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 
 				validSyncVarList.Add(syncVarInstance);
 
-				syncVarInstance.SetToDefaultValue();
+				syncVarInstance.SetToDefaultValue(syncVarInfoHelper.DeclaringType, syncVarInfoHelper.Name);
 			}
 
 #if DEBUG
-			//TODO 0 Network - TEMP DEBUG UNTIL RELEASE    
+			//TODO 1 Network - TEMP DEBUG UNTIL RELEASE
 			if (IS_DEBUG_NETWORK_TESTS__ENABLED) {
 				InitializeRedirectsRPC_CMD();
 			}
@@ -113,8 +119,8 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 
 			OnSyncVarValuesDefaulted();
 		}
-
-		private void Awake() {
+		
+        protected virtual void Awake() {
 			foreach (ISyncVar syncVarInstance in validSyncVarList) {
 				InitializeSyncVar(syncVarInstance, (T)this);
 			}
@@ -124,7 +130,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 			NetworkSpawnManager.DebugLog(() => $"{nameof(OnSyncVarsNetworkReady)} call begins for type {derivedType.Name}.");
 			OnSyncVarsNetworkReady();
 		}
-
+		
 		/// <summary>
 		/// Gets a list of SyncVar members declared in the deriving class.
 		/// </summary>
@@ -152,28 +158,21 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 			Type syncVarType = syncVarInfoHelper.MemberInfoType;
 
 			if (!syncVarType.IsSubclassOf(typeof(SyncObject))) {
-				TimeLogger.Logger.LogTimeWarning($"The var {derivedType.Name}.{syncVarInfoHelper.Name} does not " +
+				TimeLogger.Logger.LogError($"The var {derivedType.Name}.{syncVarInfoHelper.Name} does not " +
 					$"inherit from {nameof(SyncObject)} and will be skipped. Make sure that the " +
 					$"{nameof(SyncVarNetworkAttribute)} annotation was intended.", LogCategories.Network);
 				return false;
 			}
 			if (!typeof(ISyncVar).IsAssignableFrom(syncVarType)) {
-				TimeLogger.Logger.LogTimeWarning($"The var {derivedType.Name}.{syncVarInfoHelper.Name} does not " +
+				TimeLogger.Logger.LogError($"The var {derivedType.Name}.{syncVarInfoHelper.Name} does not " +
 					$"inherit from {nameof(ISyncVar)} and will be skipped. Make sure that the " +
 					$"{nameof(SyncVarNetworkAttribute)} annotation was intended.", LogCategories.Network);
 				return false;
 			}
 
-			if (syncVarType.GetGenericArguments() == null || syncVarType.GetGenericArguments().Length == 0) {
-				TimeLogger.Logger.LogTimeWarning($"The var {derivedType.Name}.{syncVarInfoHelper.Name} does not " +
-					$"declare any generic type parameters and will be skipped. Make sure that the type derives " +
-					$"from {nameof(SyncVar<object>)}.", LogCategories.Network);
-				return false;
-			}
-
 			syncVarInstance = (ISyncVar)syncVarInfoHelper.GetValueStaticAgnostic((T)this);
 			if (syncVarInstance == null) {
-				TimeLogger.Logger.LogTimeWarning($"The var {derivedType.Name}.{syncVarInfoHelper.Name} has not " +
+				TimeLogger.Logger.LogError($"The var {derivedType.Name}.{syncVarInfoHelper.Name} has not " +
 					$"been instantiated and will be skipped. Make sure to call its constructor.", LogCategories.Network);
 				return false;
 			}
@@ -203,7 +202,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 			MethodInfo onChange = derivedType.GetMethod(onChangeMethodName, SearchFlags,
 				null, [syncVarValueType, syncVarValueType], null);
 			if (onChange == null) {
-				TimeLogger.Logger.LogTimeWarning($"Method \"{onChangeMethodName}\" could not be " +
+				TimeLogger.Logger.LogWarning($"Method \"{onChangeMethodName}\" could not be " +
 					$"found in type {derivedType.Name}, or does not have the required signature:  " +
 					$"{onChangeMethodName}({syncVarType.Name} oldValue, {syncVarType.Name} newValue).",
 					LogCategories.Network);
@@ -215,7 +214,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 
 			Delegate methodDelegate = Delegate.CreateDelegate(actionGeneric, netBehaviourInstance, onChange);
 			if (methodDelegate == null) {
-				TimeLogger.Logger.LogTimeWarning($"A delegate for method " +
+				TimeLogger.Logger.LogWarning($"A delegate for method " +
 					$"\"{derivedType.Name}.{onChangeMethodName}\" could not be created.",
 					LogCategories.Network);
 				return null;
@@ -224,24 +223,170 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 			return methodDelegate;
 		}
 
-		// TODO 0 Network - For the comments
-		//
-		//	I forgot that the host commonly also need to execute the client code in the onStartClient, so
-		//	they NEED to be able to execute it too, which means someone using the single method way, would
-		//	need to create an annotated method that calls a normal method with all the actual logic in it, and
-		//	the normal method would be called in the onStartClient for both hosts and clients.
-		//	WHICH MEANS its literally doubling the methods anyway like my second idea, but still making
-		//	it more obscure to understand, just for the moments where the host doesnt need to call the
-		//	normal method, and thus you can have just the single annotated method with all the logic inside.
-		//
-		//	Also, mention that the original code in the annotated method will be executed for the host.
 
-		private void InitializeRedirectsRPC_CMD() {
+        #region "CMD/RPC helpers until automatic generation works"
+
+			/// <summary>Supported param types in <see cref="GeneratedNetworkCode.InitReadWriters()"/></summary>
+			public void CmdCall<T1>(string callingMethodName, bool requiresAuthority, T1 arg1) {
+				NetworkWriterPooled writer = NetworkWriterPool.Get();
+				writer.Write(arg1);
+
+				SendCmd(writer, callingMethodName, requiresAuthority);
+			}
+
+			/// <summary>Supported param types in <see cref="GeneratedNetworkCode.InitReadWriters()"/></summary>
+			public void CmdCall<T1, T2>(string callingMethodName, bool requiresAuthority, T1 arg1, T2 arg2) {
+				NetworkWriterPooled writer = NetworkWriterPool.Get();
+				writer.Write(arg1);
+				writer.Write(arg2);
+
+				SendCmd(writer, callingMethodName, requiresAuthority);
+			}
+
+			/// <summary>Supported param types in <see cref="GeneratedNetworkCode.InitReadWriters()"/></summary>
+			public void CmdCall<T1, T2, T3>(string callingMethodName, bool requiresAuthority, T1 arg1, T2 arg2, T3 arg3) {
+				NetworkWriterPooled writer = NetworkWriterPool.Get();
+				writer.Write(arg1);
+				writer.Write(arg2);
+				writer.Write(arg3);
+
+				SendCmd(writer, callingMethodName, requiresAuthority);
+			}
+
+			/// <summary>Supported param types in <see cref="GeneratedNetworkCode.InitReadWriters()"/></summary>
+			public void CmdCall<T1, T2, T3, T4>(string callingMethodName, bool requiresAuthority,
+					T1 arg1, T2 arg2, T3 arg3, T4 arg4) {
+				NetworkWriterPooled writer = NetworkWriterPool.Get();
+				writer.Write(arg1);
+				writer.Write(arg2);
+				writer.Write(arg3);
+				writer.Write(arg4);
+
+				SendCmd(writer, callingMethodName, requiresAuthority);
+			}
+
+			/// <summary>Supported param types in <see cref="GeneratedNetworkCode.InitReadWriters()"/></summary>
+			public void CmdCall<T1, T2, T3, T4, T5>(string callingMethodName, bool requiresAuthority,
+					T1 arg1, T2 arg2, T3 arg3, T4 arg4, T5 arg5) {
+				NetworkWriterPooled writer = NetworkWriterPool.Get();
+				writer.Write(arg1);
+				writer.Write(arg2);
+				writer.Write(arg3);
+				writer.Write(arg4);
+				writer.Write(arg5);
+
+				SendCmd(writer, callingMethodName, requiresAuthority);
+			}
+
+			/// <summary>Supported param types in <see cref="GeneratedNetworkCode.InitReadWriters()"/></summary>
+			public void CmdCall<T1, T2, T3, T4, T5, T6>(string callingMethodName, bool requiresAuthority,
+					T1 arg1, T2 arg2, T3 arg3, T4 arg4, T5 arg5, T6 arg6) {
+				NetworkWriterPooled writer = NetworkWriterPool.Get();
+				writer.Write(arg1);
+				writer.Write(arg2);
+				writer.Write(arg3);
+				writer.Write(arg4);
+				writer.Write(arg5);
+				writer.Write(arg6);
+
+				SendCmd(writer, callingMethodName, requiresAuthority);
+			}
+
+
+			/// <summary>Supported param types in <see cref="GeneratedNetworkCode.InitReadWriters()"/></summary>
+			public void RpcCall<T1>(string callingMethodName, bool includeOwner, T1 arg1) {
+				NetworkWriterPooled writer = NetworkWriterPool.Get();
+				writer.Write(arg1);
+
+				SendRpc(writer, callingMethodName, includeOwner);
+			}
+
+			/// <summary>Supported param types in <see cref="GeneratedNetworkCode.InitReadWriters()"/></summary>
+			public void RpcCall<T1, T2>(string callingMethodName, bool includeOwner, T1 arg1, T2 arg2) {
+				NetworkWriterPooled writer = NetworkWriterPool.Get();
+				writer.Write(arg1);
+				writer.Write(arg2);
+
+				SendRpc(writer, callingMethodName, includeOwner);
+			}
+
+			/// <summary>Supported param types in <see cref="GeneratedNetworkCode.InitReadWriters()"/></summary>
+			public void RpcCall<T1, T2, T3>(string callingMethodName, bool includeOwner, T1 arg1, T2 arg2, T3 arg3) {
+				NetworkWriterPooled writer = NetworkWriterPool.Get();
+				writer.Write(arg1);
+				writer.Write(arg2);
+				writer.Write(arg3);
+
+				SendRpc(writer, callingMethodName, includeOwner);
+			}
+
+			/// <summary>Supported param types in <see cref="GeneratedNetworkCode.InitReadWriters()"/></summary>
+			public void RpcCall<T1, T2, T3, T4>(string callingMethodName, bool includeOwner, T1 arg1, T2 arg2, T3 arg3, T4 arg4) {
+				NetworkWriterPooled writer = NetworkWriterPool.Get();
+				writer.Write(arg1);
+				writer.Write(arg2);
+				writer.Write(arg3);
+				writer.Write(arg4);
+
+				SendRpc(writer, callingMethodName, includeOwner);
+			}
+
+			/// <summary>Supported param types in <see cref="GeneratedNetworkCode.InitReadWriters()"/></summary>
+			public void RpcCall<T1, T2, T3, T4, T5>(string callingMethodName, bool includeOwner, T1 arg1, T2 arg2, T3 arg3, T4 arg4, T5 arg5) {
+				NetworkWriterPooled writer = NetworkWriterPool.Get();
+				writer.Write(arg1);
+				writer.Write(arg2);
+				writer.Write(arg3);
+				writer.Write(arg4);
+				writer.Write(arg5);
+
+				SendRpc(writer, callingMethodName, includeOwner);
+			}
+
+			/// <summary>Supported param types in <see cref="GeneratedNetworkCode.InitReadWriters()"/></summary>
+			public void RpcCall<T1, T2, T3, T4, T5, T6>(string callingMethodName, bool includeOwner, T1 arg1, T2 arg2, T3 arg3, T4 arg4, T5 arg5, T6 arg6) {
+				NetworkWriterPooled writer = NetworkWriterPool.Get();
+				writer.Write(arg1);
+				writer.Write(arg2);
+				writer.Write(arg3);
+				writer.Write(arg4);
+				writer.Write(arg5);
+				writer.Write(arg6);
+
+				SendRpc(writer, callingMethodName, includeOwner);
+			}
+
+			private void SendCmd(NetworkWriterPooled writer, string methodName, bool requiresAuthority) {
+				SendCommandInternal(methodName, GetMirrorMethodHashCode(methodName), writer, 0, requiresAuthority);
+				NetworkWriterPool.Return(writer);
+			}
+
+			private void SendRpc(NetworkWriterPooled writer, string methodName, bool includeOwner) {
+				SendRPCInternal(methodName, GetMirrorMethodHashCode(methodName), writer, 0, includeOwner);
+				NetworkWriterPool.Return(writer);
+			}
+
+        #endregion
+
+
+        // TODO 1 Network - For the comments
+        //
+        //	I forgot that the host commonly also need to execute the client code in the onStartClient, so
+        //	they NEED to be able to execute it too, which means someone using the single method way, would
+        //	need to create an annotated method that calls a normal method with all the actual logic in it, and
+        //	the normal method would be called in the onStartClient for both hosts and clients.
+        //	WHICH MEANS its literally doubling the methods anyway like my second idea, but still making
+        //	it more obscure to understand, just for the moments where the host doesnt need to call the
+        //	normal method, and thus you can have just the single annotated method with all the logic inside.
+        //
+        //	Also, mention that the original code in the annotated method will be executed for the host.
+
+        private void InitializeRedirectsRPC_CMD() {
 			var methodsRPC = GetRPC_MethodTargets();
 			LOG.TEMPWARNING($"{methodsRPC.Count} RPC methods");
 			foreach (var method in methodsRPC) {
 				if (methodRedirects.ContainsKey(method.origMethod)) {
-					//TODO 0 Network - Log error
+					//TODO 1 Network - Log error
 					continue;
 				}
 				methodRedirects.Add(method.origMethod, method.targetMethod);
@@ -274,7 +419,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 			//Generate delegate from the attribute values
 			RPC_CallOnClientAttribute attr = methodInfo.GetCustomAttribute<RPC_CallOnClientAttribute>();
 			if (Type.GetType(attr.declaringType.AssemblyQualifiedName) == null) {
-				TimeLogger.Logger.LogTimeError($"The type {nameof(attr.declaringType.FullName)} could not be found.",
+				TimeLogger.Logger.LogError($"The type {nameof(attr.declaringType.FullName)} could not be found.",
 					LogCategories.Network);
 			}
 
@@ -292,7 +437,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 		public static bool CompareMethodSignatures(MethodInfo mi1, MethodInfo mi2, bool compareDeclaringType = false) {
 			List<string> errors = new();
 
-			//TODO 0 Network - Is mi1.ContainsGenericParameters something I need to check?
+			//TODO 1 Network - Is mi1.ContainsGenericParameters something I need to check?
 			//	I guess I should return false right now and think if it is useful
 			//	to add support for methods with generic parameters.
 			//There is also mi1.IsGeneric? Check the difference.
@@ -321,7 +466,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 			}
 
 			if (errors.Count > 0) {
-				TimeLogger.Logger.LogTimeError($"The methods {mi1.DeclaringType.Name}.{mi1.Name} and " +
+				TimeLogger.Logger.LogError($"The methods {mi1.DeclaringType.Name}.{mi1.Name} and " +
 					$"{mi2.DeclaringType.Name}.{mi2.Name} need to have the same method signature. Fix the " +
 					$"following differences: {String.Join(", ", errors)}", LogCategories.Reflect);
 			}
@@ -333,7 +478,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 		[HarmonyDebug]
 		private static IEnumerable TranspileRPC_Call(IEnumerable<CodeInstruction> instructions, ILGenerator generator, MethodBase originalMethod) {
 			if (!methodRedirects.TryGetValue(originalMethod, out MethodInfo targetMethod)) {
-				//TODO 0 Network - Some error thrown.
+				//TODO 1 Network - Some error thrown.
 			}
 
 			CodeMatcher codeMatcher = new(instructions);
@@ -353,7 +498,7 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 				//Call target method.
 				EmitCallTargetMethod(codeMatcher, targetMethod);
 			} else {
-				TimeLogger.Logger.LogTimeError($"RPC method {originalMethod.Name} was called " +
+				TimeLogger.Logger.LogError($"RPC method {originalMethod.Name} was called " +
 					$"when no Mirror network component was active.", LogCategories.Network);
 			}
 			LOG.TEMPWARNING($"After emitting delegate " + codeMatcher.InstructionEnumeration().GetFormattedIL());
@@ -398,18 +543,18 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 		}
 
 		private static void MakeRPC_Call(object[] args) {
-			//TODO 0 Network - Maybe I should just use the original Weaver functions and stop reinventing the wheel?
+			//TODO 1 Network - Maybe I should just use the original Weaver functions and stop reinventing the wheel?
 			//	https://github.com/MirrorNetworking/Mirror/blob/master/Assets/Mirror/Editor/Weaver/Processors/RpcProcessor.cs#L59
 
 			LOG.TEMPWARNING($"MakeRPC_Call - {args.Length} ({args[0]}) params: {string.Join(", ", args)}");
 			NetworkWriterPooled writer = NetworkWriterPool.Get();
 			foreach (object parameter in args) {
 
-				//TODO 0 Network - For each parameter:
+				//TODO 1 Network - For each parameter:
 				//		writer.WriteString(SuperMarketText);
 			}
 
-			//TODO 0 Network - The 1º parameter is just for logging, the 2º param with the hash is the method to call.
+			//TODO 1 Network - The 1º parameter is just for logging, the 2º param with the hash is the method to call.
 			//SendRPCInternal("System.Void NetworkSpawner::RpcUpdateSuperMarketName(System.String)", -700807513, writer, 0, true);
 			NetworkWriterPool.Return(writer);
 			LOG.TEMPWARNING($"MakeRPC_Call finished");
@@ -548,23 +693,23 @@ namespace Damntry.UtilsBepInEx.MirrorNetwork.Components {
 
 
 		/* Obsolete automatic instantiation. In the end I decided to have the user set the initial 
-			 * constructor values since attribute parameters wew a bit awkward to use for this case.
+			 * constructor values since attribute parameters were a bit awkward to use for this case.
 			 * I might use this as an extra at some point.
 			
 			private void InstantiateSyncVar(MemberInfoHelper syncVarInfoHelper, ISyncVar syncVarInstance) {
-				//Create new instance of this SyncVar<T> using previous DefaultValue as current value.
+				//Create new Instance of this SyncVar<T> using previous DefaultValue as current value.
 				Type syncVarType = syncVarInfoHelper.MemberInfoType;
 				try {
 					syncVarInstance = (ISyncVar)Activator.CreateInstance(syncVarType,
 						BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.CreateInstance, null, 
 						[syncVarInstance, this, syncVarInfoHelper.Name], null, null);
 					if (syncVarInstance == null) {
-						TimeLogger.Logger.LogTimeWarning($"The SyncObject {syncVarInfoHelper.Name} of type {syncVarType} could " +
+						TimeLogger.Logger.LogWarning($"The SyncObject {syncVarInfoHelper.Name} of type {syncVarType} could " +
 							$"not be instantiated for an unknown reason.", LogCategories.Network);
 						return;
 					}
 				} catch (Exception ex) {
-					TimeLogger.Logger.LogTimeExceptionWithMessage($"The SyncObject {syncVarInfoHelper.Name} of type {syncVarType} " +
+					TimeLogger.Logger.LogExceptionWithMessage($"The SyncObject {syncVarInfoHelper.Name} of type {syncVarType} " +
 							$"could not be instantiated.", ex, LogCategories.Network);
 					return;
 				}

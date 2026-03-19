@@ -9,7 +9,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses.Inherita
 
 	/// <summary>
 	/// Provides extended functionality for class patching.
-	/// The derived class acts itself as an "instance", in the sense of it being 
+	/// The derived class acts itself as an "Instance", in the sense of it being 
 	/// an independent object in itself, that can also be accessed from the outside
 	/// as an hybrid Singleton.
 	/// It is meant to be used to encapsulate multiple patches in a single class that, as a whole,
@@ -20,7 +20,7 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching.BaseClasses.Inherita
 	/// objects inheriting this abstract class, much like Harmony.PatchAll() does.
 	/// Works with base harmony patching, except for patching nested classes. To patch nested classes, use
 	/// the method <see cref="HarmonyInstancePatcher.StartRecursivePatching"/> or refer on how to use <see cref="AutoPatcher"/>.
-	/// Generates an unique harmonyId so method patches can be reverted in the derived class instance.
+	/// Generates an unique harmonyId so method patches can be reverted in the derived class Instance.
 	/// </summary>
 	/// <typeparam name="T">
 	/// The <see cref="Type"/> of the deriving class.

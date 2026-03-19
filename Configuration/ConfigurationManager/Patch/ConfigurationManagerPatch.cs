@@ -17,7 +17,7 @@ namespace Damntry.UtilsBepInEx.Configuration.ConfigurationManager.Patch {
 			try {
 				Harmony.Value.PatchAll(typeof(ConfigurationManagerPatch));
 			} catch (Exception ex) {
-				TimeLogger.Logger.LogTimeExceptionWithMessage($"Error while trying to apply " +
+				TimeLogger.Logger.LogExceptionWithMessage($"Error while trying to apply " +
 					$"patch in type {nameof(ConfigurationManagerPatch)}", ex, LogCategories.Config);
 			}
 		}
