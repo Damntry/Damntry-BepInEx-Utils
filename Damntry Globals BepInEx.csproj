@@ -6,17 +6,12 @@
     <AssemblyName>Damntry.Globals.BepInEx</AssemblyName>
     <LangVersion>latest</LangVersion>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <AssemblyVersion>0.4.2</AssemblyVersion>
-    <FileVersion>0.4.2</FileVersion>
     <GenerateDocumentationFile>False</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="lib\**" />
-    <Compile Remove="MirrorNetwork\Weaver\**" />
     <EmbeddedResource Remove="lib\**" />
-    <EmbeddedResource Remove="MirrorNetwork\Weaver\**" />
     <None Remove="lib\**" />
-    <None Remove="MirrorNetwork\Weaver\**" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="BepInEx.Core">
@@ -51,9 +46,6 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Reference Include="Mirror">
-      <HintPath>lib\Mirror.dll</HintPath>
-    </Reference>
     <Reference Include="UnityEngine">
       <HintPath>..\Unity\2023.1.9f1\UnityEngine.dll</HintPath>
     </Reference>
