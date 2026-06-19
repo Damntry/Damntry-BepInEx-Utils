@@ -110,7 +110,12 @@ namespace Damntry.UtilsBepInEx.HarmonyPatching.AutoPatching {
 					TimeLogger.Logger.LogError(autoPatchInstance.ErrorMessageOnAutoPatchFail, LogCategories.AutoPatch);
 
 					if (autoPatchInstance.IsRollbackOnAutoPatchFail == true && autoPatchInstance.GetPatchedCount() > 0) {
-						autoPatchInstance.UnpatchInstance();
+						try {
+                            autoPatchInstance.UnpatchInstance();
+                        } catch (Exception ex2) {
+                            TimeLogger.Logger.LogExceptionWithMessage($"Failed to Unpatch instance " +
+								$"{autoPatchInstance}", ex2, LogCategories.AutoPatch);
+                        }
 					}
 				}
 			} finally {
